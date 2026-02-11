@@ -2,6 +2,10 @@
 
 Production-oriented, modular chat interface for CortexLTM memory workflows.
 
+## Status
+
+This project is in early development. APIs, UI behavior, and module boundaries may change quickly.
+
 ## Stack
 
 - Next.js App Router + TypeScript
