@@ -167,9 +167,9 @@ async function* parseSseStream(
   }
 }
 
-function safeParse(value: string): Record<string, any> | null {
+function safeParse(value: string): Record<string, unknown> | null {
   try {
-    return JSON.parse(value) as Record<string, any>;
+    return JSON.parse(value) as Record<string, unknown>;
   } catch {
     return null;
   }

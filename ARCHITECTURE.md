@@ -5,7 +5,7 @@
 - `src/lib/memory/`
   - `types.ts`: thread, event, context contracts
   - `memory-provider.ts`: backend-agnostic memory interface
-  - `cortex-provider.ts`: CortexLTM-only implementation (queries, cues, context assembly)
+  - `cortex-http-provider.ts`: CortexLTM API implementation (UI does not write SQL)
 - `src/lib/llm/`
   - `llm-provider.ts`: model streaming interface
   - `default-llm-provider.ts`: OpenAI/Groq streaming implementation
