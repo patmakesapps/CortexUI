@@ -1,0 +1,22 @@
+# CortexUI commands (run from repo root)
+
+# Prereqs (tested)
+# Node.js 20.x (tested: v20.19.4)
+# npm 10.x (tested: 10.8.2)
+
+# 1) Install dependencies
+npm ci
+
+# 2) Validate project
+npm run typecheck
+npm run lint
+npm run build
+
+# 3) Configure env
+copy .env.example .env.local
+
+# 4) Start dev server
+npm run dev
+
+# 5) Open app
+# http://localhost:3000
