@@ -11,13 +11,20 @@ export async function GET(
   try {
     const { threadId } = await ctx.params;
     if (!threadId) return jsonError("threadId is required.", 400);
+    if (threadId.startsWith("local-")) {
+      return NextResponse.json({ threadId, summary: null });
+    }
 
     const memory = getMemoryProvider();
     const summary = (await memory.getActiveSummary?.(threadId)) ?? null;
     return NextResponse.json({ threadId, summary });
   } catch (error) {
-    return jsonError("Failed to fetch thread summary.", 500, {
-      cause: error instanceof Error ? error.message : "unknown"
+    const { threadId } = await ctx.params;
+    return NextResponse.json({
+      threadId,
+      summary: null,
+      degraded: true,
+      warning: error instanceof Error ? error.message : "unknown"
     });
   }
 }

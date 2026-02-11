@@ -16,14 +16,20 @@ export async function GET(
 ) {
   const { threadId } = await ctx.params;
   if (!threadId) return jsonError("threadId is required.", 400);
+  if (threadId.startsWith("local-")) {
+    return Response.json({ threadId, messages: [] });
+  }
 
   try {
     const memory = getMemoryProvider();
     const messages = await memory.getRecentEvents(threadId, 100);
     return Response.json({ threadId, messages });
   } catch (error) {
-    return jsonError("Failed to fetch messages.", 500, {
-      cause: error instanceof Error ? error.message : "unknown"
+    return Response.json({
+      threadId,
+      messages: [],
+      degraded: true,
+      warning: error instanceof Error ? error.message : "unknown"
     });
   }
 }
@@ -47,9 +53,11 @@ export async function POST(
   }
 
   const demoMode = process.env.CHAT_DEMO_MODE !== "false";
+  const isLocalThread = threadId.startsWith("local-");
+  const shouldUseDemo = demoMode || isLocalThread;
   const memory = getMemoryProvider();
 
-  if (demoMode) {
+  if (shouldUseDemo) {
     const llm = getLlmProvider();
     let stream: AsyncIterable<string>;
     try {
@@ -105,7 +113,7 @@ export async function POST(
       }
     });
   } catch (error) {
-    return jsonError("Failed to stream assistant output from CortexLTM.", 500, {
+    return jsonError("Failed to stream assistant output from CortexLTM.", 503, {
       cause: error instanceof Error ? error.message : "unknown"
     });
   }
