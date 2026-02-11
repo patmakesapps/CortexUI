@@ -82,7 +82,11 @@ export class DefaultLlmProvider implements LlmProvider {
     for await (const chunk of parseSseStream(response.body)) {
       const parsed = safeParse(chunk);
       if (!parsed) continue;
-      const token = parsed.choices?.[0]?.delta?.content;
+      const token = (
+        parsed as {
+          choices?: Array<{ delta?: { content?: unknown } }>;
+        }
+      ).choices?.[0]?.delta?.content;
       if (typeof token === "string" && token.length > 0) {
         yield token;
       }

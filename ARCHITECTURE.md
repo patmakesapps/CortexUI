@@ -8,7 +8,7 @@
   - `cortex-http-provider.ts`: CortexLTM API implementation (UI does not write SQL)
 - `src/lib/llm/`
   - `llm-provider.ts`: model streaming interface
-  - `default-llm-provider.ts`: OpenAI/Groq streaming implementation
+  - `default-llm-provider.ts`: demo-mode streaming implementation
 - `src/lib/server/`
   - `providers.ts`: provider selection + singleton lifecycle
   - `db.ts`: postgres pool initialization
@@ -30,19 +30,19 @@
 ## Swap Points
 
 - Memory backend: implement `MemoryProvider`, then switch selection in `getMemoryProvider`.
-- Model provider: implement `LlmProvider`, then switch selection in `getLlmProvider`.
+- Model provider: backend-owned in CortexLTM when `CHAT_DEMO_MODE=false`.
 - UI composition: keep message contracts stable (`UIMessage`) and replace components independently.
 
 ## Request Lifecycle (`POST /api/chat/[threadId]/messages`)
 
 1. Validate payload.
-2. Persist user event (`source: chatui`).
-3. Build context:
-   - cue-based summary block
-   - cue-based semantic block
-   - recent short-term events in chronological order
-4. Stream LLM output chunk-by-chunk to client.
-5. Persist one assistant event at completion (`source: chatui_llm`).
+2. If `CHAT_DEMO_MODE=true`, stream local demo output.
+3. Otherwise proxy to CortexLTM `/v1/threads/{threadId}/chat`.
+4. CortexLTM performs ordered writes/context/model call:
+   - persist user event (`source: chatui`)
+   - build context (summary cues + semantic cues + short-term events)
+   - generate assistant response
+   - persist assistant event (`source: chatui_llm`)
 
 ## Cue Policy (v1 parity)
 

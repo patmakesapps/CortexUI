@@ -7,6 +7,11 @@ import type {
 
 export interface MemoryProvider {
   startThread(userId: string, title?: string): Promise<string>;
+  chat?(
+    threadId: string,
+    text: string,
+    signal?: AbortSignal
+  ): Promise<Response>;
   addUserEvent(
     threadId: string,
     text: string,

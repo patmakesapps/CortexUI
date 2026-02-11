@@ -33,6 +33,32 @@ export class CortexHttpProvider implements MemoryProvider {
     return payload.thread_id;
   }
 
+  async chat(
+    threadId: string,
+    text: string,
+    signal?: AbortSignal
+  ): Promise<Response> {
+    const headers = this.createHeaders();
+    const response = await fetch(
+      `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ text }),
+        signal
+      }
+    );
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(
+        detail || `Memory API chat request failed with status ${response.status}.`
+      );
+    }
+
+    return response;
+  }
+
   async listThreads(userId: string, limit = 50): Promise<ThreadRecord[]> {
     const params = new URLSearchParams({
       user_id: userId,
@@ -103,24 +129,25 @@ export class CortexHttpProvider implements MemoryProvider {
       { method: "GET" }
     );
 
-    return (payload.messages ?? [])
-      .map((row) => ({
+    const out: UIMessage[] = [];
+    for (const row of payload.messages ?? []) {
+      const role = row.role;
+      const content = row.content;
+      if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
+        continue;
+      }
+      out.push({
         id: String(row.id ?? ""),
         threadId: String(row.thread_id ?? threadId),
-        role: row.role,
-        content: row.content,
+        role,
+        content,
         createdAt: new Date(
           String(row.created_at ?? new Date().toISOString())
         ).toISOString(),
-        meta: isRecord(row.meta) ? row.meta : undefined
-      }))
-      .filter(
-        (
-          row
-        ): row is UIMessage =>
-          (row.role === "user" || row.role === "assistant") &&
-          typeof row.content === "string"
-      );
+        ...(isRecord(row.meta) ? { meta: row.meta } : {})
+      });
+    }
+    return out;
   }
 
   async getActiveSummary(threadId: string): Promise<string | null> {
@@ -158,13 +185,7 @@ export class CortexHttpProvider implements MemoryProvider {
     path: string,
     init: Omit<RequestInit, "headers"> & { headers?: HeadersInit } = {}
   ): Promise<T> {
-    const headers = new Headers(init.headers ?? {});
-    if (!headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
-    if (this.apiKey) {
-      headers.set("x-api-key", this.apiKey);
-    }
+    const headers = this.createHeaders(init.headers);
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
@@ -189,6 +210,17 @@ export class CortexHttpProvider implements MemoryProvider {
     }
 
     return (payload ?? {}) as T;
+  }
+
+  private createHeaders(existing?: HeadersInit): Headers {
+    const headers = new Headers(existing ?? {});
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    if (this.apiKey) {
+      headers.set("x-api-key", this.apiKey);
+    }
+    return headers;
   }
 }
 

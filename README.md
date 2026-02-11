@@ -30,9 +30,7 @@ This project is in early development. APIs, UI behavior, and module boundaries m
 3. Set required values in `.env.local`:
    - `CORTEX_MEMORY_BACKEND=cortex_http`
    - `CORTEX_API_BASE_URL` (for example: `http://127.0.0.1:8000`)
-   - At least one model key:
-     - `OPENAI_API_KEY`, or
-     - `GROQ_API_KEY`
+   - Optional `CORTEX_API_KEY` (must match `CORTEXLTM_API_KEY` when backend auth is enabled)
    - Keep `CHAT_DEMO_MODE=true` for temporary hardcoded streaming responses (set to `false` to use real model APIs)
 4. Start development server:
    ```bash
@@ -52,17 +50,17 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread
 - `GET /api/chat/[threadId]/messages` fetch recent messages
-- `POST /api/chat/[threadId]/messages` persist user event, stream assistant output, persist assistant event
+- `POST /api/chat/[threadId]/messages` proxy chat orchestration to CortexLTM (`/v1/threads/{threadId}/chat`)
 - `GET /api/chat/[threadId]/summary` fetch active summary (optional)
 
 ## Cortex Ordering Contract
 
 `POST /api/chat/[threadId]/messages` enforces:
 
-1. `addUserEvent(...source:"chatui")`
-2. `buildMemoryContext(...)`
-3. stream model output to client
-4. `addAssistantEvent(...source:"chatui_llm")` once stream ends
+1. `addUserEvent(...source:"chatui")` in CortexLTM
+2. `buildMemoryContext(...)` in CortexLTM
+3. model generation in CortexLTM
+4. `addAssistantEvent(...source:"chatui_llm")` in CortexLTM
 
 This preserves summary trigger timing that depends on assistant writes.
 

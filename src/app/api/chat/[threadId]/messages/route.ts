@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { getLlmProvider, getMemoryProvider } from "@/lib/server/providers";
 import { jsonError } from "@/lib/server/http";
-import type { ContextMessage } from "@/lib/memory/types";
 
 export const runtime = "nodejs";
 
@@ -49,75 +48,65 @@ export async function POST(
 
   const demoMode = process.env.CHAT_DEMO_MODE !== "false";
   const memory = getMemoryProvider();
-  const llm = getLlmProvider();
 
-  // In demo mode, allow UI streaming even when DB is unavailable.
-  if (!demoMode) {
+  if (demoMode) {
+    const llm = getLlmProvider();
+    let stream: AsyncIterable<string>;
     try {
-      await memory.addUserEvent(threadId, text, { source: "chatui" });
+      stream = llm.streamChat({
+        messages: [{ role: "user", content: text }],
+        signal: req.signal
+      });
     } catch (error) {
-      return jsonError("Failed to persist user event.", 500, {
+      return jsonError("Failed to initialize demo stream.", 500, {
         cause: error instanceof Error ? error.message : "unknown"
       });
     }
-  }
 
-  let contextMessages: ContextMessage[] = [{ role: "user", content: text }];
-  if (!demoMode) {
-    try {
-      contextMessages = await memory.buildMemoryContext({
-        threadId,
-        latestUserText: text,
-        shortTermLimit: 30
-      });
-    } catch (error) {
-      return jsonError("Failed to build memory context.", 500, {
-        cause: error instanceof Error ? error.message : "unknown"
-      });
-    }
-  }
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unexpected stream error";
+          controller.enqueue(
+            encoder.encode(`\n[Stream error: ${message}. Please retry.]\n`)
+          );
+          controller.close();
+        }
+      }
+    });
 
-  let assistantText = "";
-  let stream: AsyncIterable<string>;
-  try {
-    stream = llm.streamChat({ messages: contextMessages, signal: req.signal });
-  } catch (error) {
-    return jsonError("Failed to initialize model stream.", 500, {
-      cause: error instanceof Error ? error.message : "unknown"
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform"
+      }
     });
   }
 
-  const encoder = new TextEncoder();
-  const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        for await (const chunk of stream) {
-          assistantText += chunk;
-          controller.enqueue(encoder.encode(chunk));
-        }
-
-        if (!demoMode && assistantText.trim().length > 0) {
-          await memory.addAssistantEvent(threadId, assistantText, {
-            source: "chatui_llm"
-          });
-        }
-        controller.close();
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unexpected stream error";
-        controller.enqueue(
-          encoder.encode(`\n[Stream error: ${message}. Please retry.]\n`)
-        );
-        controller.close();
+  try {
+    if (!memory.chat) {
+      return jsonError("Selected memory backend does not implement chat().", 500);
+    }
+    const upstream = await memory.chat(threadId, text, req.signal);
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("Content-Type") ?? "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform"
       }
-    }
-  });
-
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform"
-    }
-  });
+    });
+  } catch (error) {
+    return jsonError("Failed to stream assistant output from CortexLTM.", 500, {
+      cause: error instanceof Error ? error.message : "unknown"
+    });
+  }
 }
