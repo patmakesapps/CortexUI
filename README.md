@@ -11,7 +11,7 @@ This project is in early development. APIs, UI behavior, and module boundaries m
 - Next.js App Router + TypeScript
 - Tailwind CSS
 - Framer Motion
-- PostgreSQL adapter (`pg`) for Cortex memory tables
+- CortexLTM HTTP memory backend integration
 
 ## Setup
 
@@ -28,8 +28,8 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    copy .env.example .env.local
    ```
 3. Set required values in `.env.local`:
-   - `SUPABASE_DB_URL`
-   - `CORTEX_MEMORY_BACKEND=cortex`
+   - `CORTEX_MEMORY_BACKEND=cortex_http`
+   - `CORTEX_API_BASE_URL` (for example: `http://127.0.0.1:8000`)
    - At least one model key:
      - `OPENAI_API_KEY`, or
      - `GROQ_API_KEY`
@@ -40,6 +40,12 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    ```
 
 Open `http://localhost:3000`.
+
+Before starting CortexUI, run CortexLTM API:
+
+```bash
+uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
+```
 
 ## API Routes
 
@@ -63,4 +69,4 @@ This preserves summary trigger timing that depends on assistant writes.
 ## Notes
 
 - User resolution currently uses request headers/cookies (`x-user-id`, `x-auth-sub`, `cortex_user_id`) with deterministic UUID fallback.
-- Cortex-specific table/query behavior is isolated in `src/lib/memory/cortex-provider.ts`.
+- CortexLTM HTTP integration is isolated in `src/lib/memory/cortex-http-provider.ts`.
