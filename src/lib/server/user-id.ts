@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto";
 import type { NextRequest } from "next/server";
+import { ACCESS_TOKEN_COOKIE, decodeJwtPayload } from "@/lib/server/auth";
 
 export function resolveStableUserId(req: NextRequest): string {
   const directUserId = req.headers.get("x-user-id");
@@ -10,6 +11,12 @@ export function resolveStableUserId(req: NextRequest): string {
 
   const cookieUser = req.cookies.get("cortex_user_id")?.value;
   if (cookieUser) return normalizeAsUuid(cookieUser);
+
+  const accessToken = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+  if (accessToken) {
+    const sub = decodeJwtPayload(accessToken)?.sub;
+    if (sub) return normalizeAsUuid(sub);
+  }
 
   return randomUUID();
 }

@@ -4,8 +4,13 @@ import { Composer } from "@/components/chat/composer";
 import { MessageList } from "@/components/chat/message-list";
 import { useChat } from "@/hooks/use-chat";
 
-export function ChatShell() {
-  const { messages, isBootstrapping, isStreaming, error, sendMessage } = useChat();
+type Props = {
+  allowLocalFallback?: boolean;
+};
+
+export function ChatShell({ allowLocalFallback = true }: Props) {
+  const { threadId, messages, isBootstrapping, isStreaming, error, sendMessage } =
+    useChat({ allowLocalFallback });
   const hasMessages = messages.length > 0;
 
   return (
@@ -22,12 +27,14 @@ export function ChatShell() {
                 Welcome back
               </h2>
               <p className="mt-3 text-sm text-slate-400 md:text-base">
-                Ask anything to get started. Your context is memory-aware.
+                {threadId
+                  ? "Ask anything to get started. Your context is memory-aware."
+                  : "Finish sign-in or refresh to start a secure chat session."}
               </p>
             </div>
             <Composer
               onSend={sendMessage}
-              isDisabled={isBootstrapping}
+              isDisabled={isBootstrapping || !threadId}
               isStreaming={isStreaming}
               inline
             />
@@ -41,7 +48,7 @@ export function ChatShell() {
 
           <Composer
             onSend={sendMessage}
-            isDisabled={isBootstrapping}
+            isDisabled={isBootstrapping || !threadId}
             isStreaming={isStreaming}
           />
         </>

@@ -16,7 +16,8 @@ type UseChatResult = {
   sendMessage: (text: string) => Promise<void>;
 };
 
-export function useChat(): UseChatResult {
+export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResult {
+  const allowLocalFallback = options?.allowLocalFallback ?? true;
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -45,9 +46,11 @@ export function useChat(): UseChatResult {
           }
         }
 
-        // Demo fallback: allow chat UI to run without memory backend wiring.
-        if (!activeThreadId) {
+        if (!activeThreadId && allowLocalFallback) {
           activeThreadId = `local-${crypto.randomUUID()}`;
+        }
+        if (!activeThreadId) {
+          throw new Error("Unable to initialize a chat thread.");
         }
 
         setThreadId(activeThreadId);
@@ -61,7 +64,11 @@ export function useChat(): UseChatResult {
         const messageData = (await messagesRes.json()) as { messages: UIMessage[] };
         setMessages(messageData.messages);
       } catch (err) {
-        setThreadId(`local-${crypto.randomUUID()}`);
+        if (allowLocalFallback) {
+          setThreadId(`local-${crypto.randomUUID()}`);
+        } else {
+          setThreadId(null);
+        }
         setError(err instanceof Error ? err.message : "Failed to initialize chat.");
       } finally {
         setIsBootstrapping(false);
@@ -69,7 +76,7 @@ export function useChat(): UseChatResult {
     };
 
     void bootstrap();
-  }, []);
+  }, [allowLocalFallback]);
 
   const sendMessage = useCallback(
     async (text: string) => {

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getLlmProvider, getMemoryProvider } from "@/lib/server/providers";
 import { jsonError } from "@/lib/server/http";
+import { getAuthFromRequest, getAuthMode } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
 
@@ -10,8 +11,17 @@ type MessagePayload = {
   text?: string;
 };
 
+function isAuthError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    message.includes("unauthorized") ||
+    message.includes("bearer token required") ||
+    message.includes("invalid or expired access token")
+  );
+}
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ threadId: string }> }
 ) {
   const { threadId } = await ctx.params;
@@ -21,10 +31,13 @@ export async function GET(
   }
 
   try {
-    const memory = getMemoryProvider();
+    const memory = getMemoryProvider(getAuthFromRequest(req).authorization);
     const messages = await memory.getRecentEvents(threadId, 100);
     return Response.json({ threadId, messages });
   } catch (error) {
+    if (getAuthMode() === "supabase" && isAuthError(error)) {
+      return jsonError("Your session expired. Please sign in again.", 401);
+    }
     return Response.json({
       threadId,
       messages: [],
@@ -55,7 +68,7 @@ export async function POST(
   const demoMode = process.env.CHAT_DEMO_MODE !== "false";
   const isLocalThread = threadId.startsWith("local-");
   const shouldUseDemo = demoMode || isLocalThread;
-  const memory = getMemoryProvider();
+  const memory = getMemoryProvider(getAuthFromRequest(req).authorization);
 
   if (shouldUseDemo) {
     const llm = getLlmProvider();
@@ -113,6 +126,9 @@ export async function POST(
       }
     });
   } catch (error) {
+    if (getAuthMode() === "supabase" && isAuthError(error)) {
+      return jsonError("Your session expired. Please sign in again.", 401);
+    }
     return jsonError("Failed to stream assistant output from CortexLTM.", 503, {
       cause: error instanceof Error ? error.message : "unknown"
     });

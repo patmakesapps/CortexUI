@@ -31,7 +31,10 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    - `CORTEX_MEMORY_BACKEND=cortex_http`
    - `CORTEX_API_BASE_URL` (for example: `http://127.0.0.1:8000`)
    - Optional `CORTEX_API_KEY` (must match `CORTEXLTM_API_KEY` when backend auth is enabled)
-   - Keep `CHAT_DEMO_MODE=true` for temporary hardcoded streaming responses (set to `false` to use real model APIs)
+   - `AUTH_MODE=dev` (or `supabase` when backend enforces bearer tokens)
+   - `APP_ORIGIN` (for example: `http://localhost:3000`, used for OAuth callback URLs)
+   - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` when using Supabase auth
+   - Keep `CHAT_DEMO_MODE=false` for real backend chat (set to `true` only for local UI demos)
 4. Start development server:
    ```bash
    npm run dev
@@ -47,6 +50,11 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 
 ## API Routes
 
+- `GET /api/auth/session` current auth state
+- `POST /api/auth/sign-in` email/password sign-in
+- `POST /api/auth/sign-up` email/password account creation
+- `POST /api/auth/oauth/start` start OAuth login (Google/GitHub)
+- `POST /api/auth/sign-out` clear local auth cookies
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread
 - `GET /api/chat/[threadId]/messages` fetch recent messages
@@ -66,5 +74,6 @@ This preserves summary trigger timing that depends on assistant writes.
 
 ## Notes
 
-- User resolution currently uses request headers/cookies (`x-user-id`, `x-auth-sub`, `cortex_user_id`) with deterministic UUID fallback.
+- In `AUTH_MODE=supabase`, users must sign in before chat routes initialize.
+- CortexUI stores Supabase access/refresh tokens in HTTP-only cookies and forwards bearer auth to CortexLTM.
 - CortexLTM HTTP integration is isolated in `src/lib/memory/cortex-http-provider.ts`.

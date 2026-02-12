@@ -11,11 +11,13 @@ type JsonRecord = Record<string, unknown>;
 export class CortexHttpProvider implements MemoryProvider {
   private readonly baseUrl: string;
   private readonly apiKey: string | null;
+  private readonly authorization: string | null;
 
-  constructor() {
+  constructor(options?: { authorization?: string | null }) {
     const configured = process.env.CORTEX_API_BASE_URL ?? "http://127.0.0.1:8000";
     this.baseUrl = configured.replace(/\/+$/, "");
     this.apiKey = process.env.CORTEX_API_KEY ?? null;
+    this.authorization = options?.authorization ?? null;
   }
 
   async startThread(userId: string, title?: string): Promise<string> {
@@ -219,6 +221,9 @@ export class CortexHttpProvider implements MemoryProvider {
     }
     if (this.apiKey) {
       headers.set("x-api-key", this.apiKey);
+    }
+    if (this.authorization && !headers.has("Authorization")) {
+      headers.set("Authorization", this.authorization);
     }
     return headers;
   }
