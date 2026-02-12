@@ -2,6 +2,18 @@
 
 Production-oriented, modular chat interface for CortexLTM memory workflows.
 
+## Release Notes (Feb 2026)
+
+- Added production-oriented Supabase auth flow with:
+  - Email/password sign-in
+  - Create-account flow
+  - OAuth sign-in (Google, GitHub)
+- Added secure session handling via HTTP-only cookies.
+- Added auth API routes under `src/app/api/auth/*`.
+- Added `/auth/callback` flow for OAuth session finalization.
+- Updated chat API proxying to forward bearer auth to CortexLTM.
+- Added `AUTH_MODE` support (`dev` and `supabase`) for easier OSS onboarding.
+
 ## Status
 
 This project is in early development. APIs, UI behavior, and module boundaries may change quickly.
