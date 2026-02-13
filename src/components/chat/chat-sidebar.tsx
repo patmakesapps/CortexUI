@@ -90,30 +90,36 @@ export function ChatSidebar({
 
   return (
     <>
-      <div className="flex h-full flex-col border-r border-slate-700/50 bg-slate-900/65">
-        <div className={`flex items-center gap-2 border-b border-slate-700/50 p-2 ${isCollapsed ? "justify-center" : ""}`}>
-        {!isCollapsed ? (
-          <button
-            type="button"
-            onClick={() => void onCreateThread()}
-            className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-cyan-500/35 bg-cyan-500/12 px-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20"
-          >
-            New chat
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void onCreateThread()}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-cyan-500/35 bg-cyan-500/12 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
-            aria-label="New chat"
-            title="New chat"
-          >
-            +
-          </button>
-        )}
+      <div className="flex h-full flex-col border-r border-slate-700/60 bg-slate-900/95">
+        <div className={`border-b border-slate-700/60 p-2 ${isCollapsed ? "flex justify-center" : ""}`}>
+          {!isCollapsed ? (
+              <button
+                type="button"
+                onClick={() => void onCreateThread()}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-600/80 bg-slate-800/80 px-3 text-sm font-medium text-slate-100 transition hover:bg-slate-700/80"
+              >
+                <span className="text-base leading-none">🧠</span>
+                New chat
+              </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onCreateThread()}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-600/80 bg-slate-800/80 text-base font-semibold text-slate-100 transition hover:bg-slate-700/80"
+              aria-label="New chat"
+              title="New chat"
+            >
+              +
+            </button>
+          )}
         </div>
 
         <div className="chat-scroll flex-1 overflow-y-auto p-2">
+          {!isCollapsed ? (
+            <p className="mb-2 px-2 text-[11px] uppercase tracking-[0.12em] text-slate-400">
+              Chats
+            </p>
+          ) : null}
           <ul className="space-y-1">
             {threads.map((thread, index) => {
               const label = labelForThread(thread, index);
@@ -123,13 +129,13 @@ export function ChatSidebar({
               return (
                 <li key={thread.id}>
                   {isEditing ? (
-                    <form onSubmit={submitRename} className="rounded-md border border-slate-600/70 bg-slate-800/70 p-1.5">
+                    <form onSubmit={submitRename} className="rounded-lg border border-slate-600/80 bg-slate-800/80 p-1.5">
                       <input
                         autoFocus
                         value={draftTitle}
                         onChange={(event) => setDraftTitle(event.target.value)}
                         onBlur={() => void submitRename()}
-                        className="w-full rounded-md border border-slate-500/70 bg-slate-900/80 px-2 py-1.5 text-sm text-slate-100 outline-none ring-cyan-400/35 focus:ring-1"
+                        className="w-full rounded-md border border-slate-500/80 bg-slate-900/90 px-2.5 py-1.5 text-sm text-slate-100 outline-none ring-slate-300/30 focus:ring-1"
                         maxLength={120}
                         disabled={isRenaming}
                       />
@@ -137,7 +143,7 @@ export function ChatSidebar({
                         <button
                           type="submit"
                           disabled={isRenaming}
-                          className="inline-flex h-7 items-center justify-center rounded-md border border-cyan-500/45 bg-cyan-500/15 px-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex h-7 items-center justify-center rounded-md border border-slate-500/80 bg-slate-700/90 px-2.5 text-xs font-medium text-slate-100 transition hover:bg-slate-600/90 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isRenaming ? "Saving..." : "Save"}
                         </button>
@@ -148,15 +154,15 @@ export function ChatSidebar({
                       <button
                         type="button"
                         onClick={() => void onSelectThread(thread.id)}
-                        className={`flex min-w-0 flex-1 items-center rounded-md border px-2 py-2 text-left text-sm transition ${
+                        className={`flex min-w-0 flex-1 items-center rounded-lg px-2 py-2 text-left text-sm transition ${
                           isActive
-                            ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-100"
-                            : "border-transparent bg-slate-800/45 text-slate-200 hover:border-slate-600/60 hover:bg-slate-800/70"
+                            ? "bg-slate-700/80 text-slate-100"
+                            : "text-slate-200 hover:bg-slate-800/85"
                         } ${isCollapsed ? "justify-center px-1" : ""}`}
                         title={label}
                       >
                         {isCollapsed ? (
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-500/70 bg-slate-900/85 text-xs font-semibold">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-500/80 bg-slate-900/90 text-xs font-semibold">
                             {initials(label)}
                           </span>
                         ) : (
@@ -168,11 +174,11 @@ export function ChatSidebar({
                           <button
                             type="button"
                             onClick={() => startRename(thread, index)}
-                            className="invisible inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600/65 bg-slate-800/75 text-xs text-slate-200 transition hover:bg-slate-700/80 group-hover:visible"
+                            className="invisible inline-flex h-8 w-8 items-center justify-center rounded-md text-xs text-slate-300 transition hover:bg-slate-700/80 group-hover:visible"
                             aria-label={`Rename ${label}`}
                             title="Rename"
                           >
-                            Edit
+                            ...
                           </button>
                           <button
                             type="button"
@@ -180,11 +186,11 @@ export function ChatSidebar({
                               setDeleteError(null);
                               setPendingDelete({ id: thread.id, label });
                             }}
-                            className="invisible inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-700/65 bg-rose-900/35 text-xs text-rose-200 transition hover:bg-rose-800/45 group-hover:visible"
+                            className="invisible inline-flex h-8 w-8 items-center justify-center rounded-md text-xs text-rose-300 transition hover:bg-rose-900/35 group-hover:visible"
                             aria-label={`Delete ${label}`}
                             title="Delete"
                           >
-                            Del
+                            x
                           </button>
                         </>
                       ) : null}
@@ -196,17 +202,17 @@ export function ChatSidebar({
           </ul>
         </div>
 
-        <div className="border-t border-slate-700/50 p-2">
+        <div className="border-t border-slate-700/60 p-2">
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className={`inline-flex h-9 items-center justify-center rounded-md border border-slate-600/75 bg-slate-800/70 text-sm text-slate-100 transition hover:bg-slate-700/80 ${
+            className={`inline-flex h-9 items-center justify-center rounded-md border border-slate-600/80 bg-slate-800/75 text-sm text-slate-100 transition hover:bg-slate-700/80 ${
               isCollapsed ? "w-9" : "w-full gap-2"
             }`}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            <span className="font-semibold">{isCollapsed ? ">>" : "<<"}</span>
+            <span className="font-semibold">{isCollapsed ? "⟳" : "⟲"}</span>
             {!isCollapsed ? <span>Collapse</span> : null}
           </button>
         </div>
