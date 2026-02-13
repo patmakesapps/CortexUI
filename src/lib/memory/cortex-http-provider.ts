@@ -78,6 +78,22 @@ export class CortexHttpProvider implements MemoryProvider {
     }));
   }
 
+  async renameThread(threadId: string, title: string): Promise<void> {
+    await this.requestJson(
+      `/v1/threads/${encodeURIComponent(threadId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ title })
+      }
+    );
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await this.requestJson(`/v1/threads/${encodeURIComponent(threadId)}`, {
+      method: "DELETE"
+    });
+  }
+
   async addUserEvent(
     threadId: string,
     text: string,

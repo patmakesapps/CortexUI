@@ -42,6 +42,19 @@ export class CortexProvider implements MemoryProvider {
     }));
   }
 
+  async renameThread(threadId: string, title: string): Promise<void> {
+    await getDbPool().query(
+      `update ltm_threads
+       set title = $2
+       where id = $1`,
+      [threadId, title]
+    );
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await getDbPool().query(`delete from ltm_threads where id = $1`, [threadId]);
+  }
+
   async addUserEvent(
     threadId: string,
     text: string,

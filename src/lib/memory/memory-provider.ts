@@ -25,5 +25,7 @@ export interface MemoryProvider {
   ): Promise<string>;
   getRecentEvents(threadId: string, limit?: number): Promise<UIMessage[]>;
   listThreads?(userId: string, limit?: number): Promise<ThreadRecord[]>;
+  renameThread?(threadId: string, title: string): Promise<void>;
+  deleteThread?(threadId: string): Promise<void>;
   getActiveSummary?(threadId: string): Promise<string | null>;
 }
