@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Composer } from "@/components/chat/composer";
 import { MessageList } from "@/components/chat/message-list";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -29,7 +29,29 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
   } = useChat({ allowLocalFallback });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(max-width: 767px)");
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, []);
+
+  const sidebarIsCollapsed = isMobileViewport ? false : sidebarCollapsed;
+
+  const handleToggleSidebar = () => {
+    if (isMobileViewport) {
+      setMobileSidebarOpen(false);
+      return;
+    }
+    setSidebarCollapsed((prev) => !prev);
+  };
 
   return (
     <main className="flex h-full max-h-full w-full overflow-hidden">
@@ -43,13 +65,13 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
       <aside
         className={`absolute left-0 top-0 z-40 h-full w-72 transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } ${sidebarCollapsed ? "md:w-20" : "md:w-72"}`}
+        } ${sidebarIsCollapsed ? "md:w-20" : "md:w-72"}`}
       >
         <ChatSidebar
           threads={threads}
           activeThreadId={threadId}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+          isCollapsed={sidebarIsCollapsed}
+          onToggleCollapsed={handleToggleSidebar}
           onCreateThread={async () => {
             setMobileSidebarOpen(false);
             await createThread();
@@ -69,7 +91,7 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(true)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-600/70 bg-slate-800/75 text-sm text-slate-100"
+            className="inline-flex h-9 items-center justify-center rounded-md border border-slate-600/70 bg-slate-800/75 px-2.5 text-sm text-slate-100"
             aria-label="Open chats"
           >
             Menu
