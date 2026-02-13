@@ -35,7 +35,7 @@ export function Composer({
       className={
         inline
           ? "w-full px-2 py-2 md:px-3"
-          : "shrink-0 bg-transparent px-2 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-2 md:px-4"
+          : "shrink-0 bg-transparent px-2 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-2 md:px-4"
       }
     >
       <div

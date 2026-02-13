@@ -2,6 +2,7 @@
 
 import { Composer } from "@/components/chat/composer";
 import { MessageList } from "@/components/chat/message-list";
+import { BrainLoader } from "@/components/ui/brain-loader";
 import { useChat } from "@/hooks/use-chat";
 
 type Props = {
@@ -14,10 +15,11 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
   const hasMessages = messages.length > 0;
 
   return (
-    <main className="flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden">
+    <main className="flex h-full max-h-full w-full flex-col overflow-hidden">
       {isBootstrapping ? (
-        <section className="flex flex-1 items-center justify-center px-4 text-sm text-slate-400">
-          Initializing chat thread...
+        <section className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-sm text-slate-400">
+          <BrainLoader />
+          <p>Initializing chat thread...</p>
         </section>
       ) : !hasMessages ? (
         <section className="flex flex-1 flex-col items-center justify-center px-3 md:px-4">

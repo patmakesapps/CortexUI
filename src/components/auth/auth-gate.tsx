@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { AuthPanel } from "@/components/auth/auth-panel";
+import { BrainLoader } from "@/components/ui/brain-loader";
 
 type SessionState = {
   loading: boolean;
@@ -80,8 +81,9 @@ export function AuthGate({ requireAuth }: Props) {
   if (session.loading) {
     return (
       <main className="flex h-[100dvh] items-center justify-center px-4">
-        <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
-          Checking your session...
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-900/70 px-6 py-5 text-sm text-slate-300">
+          <BrainLoader />
+          <p>Checking your session...</p>
         </div>
       </main>
     );
@@ -101,21 +103,26 @@ export function AuthGate({ requireAuth }: Props) {
   }
 
   return (
-    <div className="relative h-[100dvh]">
-      <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 border-b border-slate-700/60 bg-slate-950/50 px-4 py-2 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-end gap-3 text-xs text-slate-300">
-          <span className="hidden md:inline">{session.email ?? "Signed in"}</span>
-          <button
-            type="button"
-            onClick={signOut}
-            disabled={isSigningOut}
-            className="pointer-events-auto rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSigningOut ? "Signing out..." : "Sign out"}
-          </button>
+    <div className="relative h-[100dvh] overflow-hidden">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-slate-200/15 bg-slate-900/45 px-4 py-4 shadow-[0_16px_42px_rgba(2,6,23,0.5)] backdrop-blur-2xl backdrop-saturate-150">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 text-xs text-slate-300">
+          <span className="text-sm font-semibold tracking-[0.14em] text-cyan-200/95">Cortex AI</span>
+          <div className="pointer-events-auto flex items-center gap-3">
+            <span className="hidden md:inline">{session.email ?? "Signed in"}</span>
+            <button
+              type="button"
+              onClick={signOut}
+              disabled={isSigningOut}
+              className="rounded-md border border-slate-500/75 bg-slate-800/75 px-3 py-1.5 text-xs text-slate-100 transition hover:bg-slate-700/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSigningOut ? "Signing out..." : "Sign out"}
+            </button>
+          </div>
         </div>
       </div>
-      <ChatShell allowLocalFallback={!requireAuth} />
+      <div className="h-full pt-[78px]">
+        <ChatShell allowLocalFallback={!requireAuth} />
+      </div>
     </div>
   );
 }
