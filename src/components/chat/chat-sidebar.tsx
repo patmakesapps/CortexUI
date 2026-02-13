@@ -371,6 +371,14 @@ export function ChatSidebar({
                   </span>{" "}
                   and its messages.
                 </p>
+                {isDeleting ? (
+                  <div className="mt-3 rounded-md border border-slate-700/70 bg-slate-800/70 p-2.5">
+                    <div className="flex items-center gap-2">
+                      <BrainLoader subtle className="scale-75 origin-left" />
+                      <p className="text-xs text-slate-300">Deleting chat...</p>
+                    </div>
+                  </div>
+                ) : null}
                 {deleteError ? (
                   <p className="mt-2 text-xs text-rose-300">{deleteError}</p>
                 ) : null}

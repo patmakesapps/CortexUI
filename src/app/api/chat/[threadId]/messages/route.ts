@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getLlmProvider, getMemoryProvider } from "@/lib/server/providers";
 import { jsonError } from "@/lib/server/http";
 import { getAuthFromRequest, getAuthMode } from "@/lib/server/auth";
+import { MemoryApiError } from "@/lib/memory/cortex-http-provider";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,10 @@ function isAuthError(error: unknown): boolean {
     message.includes("bearer token required") ||
     message.includes("invalid or expired access token")
   );
+}
+
+function isMemoryApiError(error: unknown): error is MemoryApiError {
+  return error instanceof MemoryApiError;
 }
 
 export async function GET(
@@ -37,6 +42,9 @@ export async function GET(
   } catch (error) {
     if (getAuthMode() === "supabase" && isAuthError(error)) {
       return jsonError("Your session expired. Please sign in again.", 401);
+    }
+    if (isMemoryApiError(error)) {
+      return jsonError(error.message, error.status);
     }
     return Response.json({
       threadId,
@@ -128,6 +136,9 @@ export async function POST(
   } catch (error) {
     if (getAuthMode() === "supabase" && isAuthError(error)) {
       return jsonError("Your session expired. Please sign in again.", 401);
+    }
+    if (isMemoryApiError(error)) {
+      return jsonError(error.message, error.status);
     }
     return jsonError("Failed to stream assistant output from CortexLTM.", 503, {
       cause: error instanceof Error ? error.message : "unknown"

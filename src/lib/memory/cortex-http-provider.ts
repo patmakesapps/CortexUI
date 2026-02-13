@@ -8,6 +8,16 @@ import type {
 
 type JsonRecord = Record<string, unknown>;
 
+export class MemoryApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "MemoryApiError";
+    this.status = status;
+  }
+}
+
 export class CortexHttpProvider implements MemoryProvider {
   private readonly baseUrl: string;
   private readonly apiKey: string | null;
@@ -52,10 +62,20 @@ export class CortexHttpProvider implements MemoryProvider {
     );
 
     if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(
-        detail || `Memory API chat request failed with status ${response.status}.`
-      );
+      const textBody = await response.text();
+      let payload: JsonRecord | null = null;
+      if (textBody) {
+        try {
+          payload = JSON.parse(textBody) as JsonRecord;
+        } catch {
+          payload = null;
+        }
+      }
+      const message =
+        readErrorMessage(payload) ??
+        (textBody ||
+          `Memory API chat request failed with status ${response.status}.`);
+      throw new MemoryApiError(message, response.status);
     }
 
     return response;
@@ -242,7 +262,7 @@ export class CortexHttpProvider implements MemoryProvider {
       const message =
         readErrorMessage(payload) ??
         `Memory API request failed with status ${response.status}.`;
-      throw new Error(message);
+      throw new MemoryApiError(message, response.status);
     }
 
     return (payload ?? {}) as T;

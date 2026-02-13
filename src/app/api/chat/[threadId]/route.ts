@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMemoryProvider } from "@/lib/server/providers";
 import { getAuthFromRequest, getAuthMode } from "@/lib/server/auth";
 import { jsonError } from "@/lib/server/http";
+import { MemoryApiError } from "@/lib/memory/cortex-http-provider";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,10 @@ function isAuthError(error: unknown): boolean {
     message.includes("bearer token required") ||
     message.includes("invalid or expired access token")
   );
+}
+
+function isMemoryApiError(error: unknown): error is MemoryApiError {
+  return error instanceof MemoryApiError;
 }
 
 export async function PATCH(
@@ -45,6 +50,9 @@ export async function PATCH(
     if (getAuthMode() === "supabase" && isAuthError(error)) {
       return jsonError("Your session expired. Please sign in again.", 401);
     }
+    if (isMemoryApiError(error)) {
+      return jsonError(error.message, error.status);
+    }
     return jsonError("Could not rename thread right now.", 503, {
       cause: error instanceof Error ? error.message : "unknown"
     });
@@ -71,6 +79,9 @@ export async function DELETE(
   } catch (error) {
     if (getAuthMode() === "supabase" && isAuthError(error)) {
       return jsonError("Your session expired. Please sign in again.", 401);
+    }
+    if (isMemoryApiError(error)) {
+      return jsonError(error.message, error.status);
     }
     return jsonError("Could not delete thread right now.", 503, {
       cause: error instanceof Error ? error.message : "unknown"

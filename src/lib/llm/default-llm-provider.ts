@@ -1,4 +1,6 @@
 import type { LlmProvider, StreamChatParams } from "@/lib/llm/llm-provider";
+import { readFile } from "fs/promises";
+import path from "path";
 
 type ProviderConfig = {
   name: "openai" | "groq";
@@ -38,9 +40,11 @@ export class DefaultLlmProvider implements LlmProvider {
   }
 
   async *streamChat(params: StreamChatParams): AsyncIterable<string> {
+    const messages = await withSoulContract(params.messages);
+
     if (process.env.CHAT_DEMO_MODE !== "false") {
       const prompt =
-        params.messages
+        messages
           .slice()
           .reverse()
           .find((message) => message.role === "user")?.content ?? "your prompt";
@@ -65,7 +69,7 @@ export class DefaultLlmProvider implements LlmProvider {
       },
       body: JSON.stringify({
         model: this.config.model,
-        messages: params.messages,
+        messages,
         stream: true,
         temperature: 0.2
       }),
@@ -177,4 +181,47 @@ function safeParse(value: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+let soulContractCache: string | null | undefined;
+
+async function withSoulContract(messages: StreamChatParams["messages"]) {
+  const soul = await readSoulContract();
+  if (!soul) return messages;
+
+  return [
+    {
+      role: "system",
+      content:
+        "Apply the following soul contract for behavior, tone, and boundaries.\n\n" +
+        soul
+    },
+    ...messages
+  ];
+}
+
+async function readSoulContract(): Promise<string | null> {
+  if (soulContractCache !== undefined) return soulContractCache;
+
+  const configuredPath = process.env.CORTEX_SOUL_SPEC_PATH?.trim();
+  const candidates = [
+    configuredPath,
+    path.resolve(process.cwd(), "..", "CortexLTM", "soul", "SOUL.md"),
+    path.resolve(process.cwd(), "soul", "SOUL.md")
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of candidates) {
+    try {
+      const value = (await readFile(candidate, "utf8")).trim();
+      if (value.length > 0) {
+        soulContractCache = value;
+        return soulContractCache;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  soulContractCache = null;
+  return soulContractCache;
 }
