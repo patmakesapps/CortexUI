@@ -335,19 +335,24 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
       setIsStreaming(true);
 
       let activeId = activeThreadRef.current;
+      let streamThreadId: string | null = activeId;
 
       try {
         if (!activeId) {
-          const created = await createRemoteThread();
-
-          setThreads((prev) => [
-            created,
-            ...prev.filter((thread) => thread.id !== created.id)
-          ]);
-
-          activeId = created.id;
-          activeThreadRef.current = created.id;
-          setThreadId(created.id);
+          const draftId = `draft-${crypto.randomUUID()}`;
+          const createdAt = new Date().toISOString();
+          const draftThread: ChatThread = {
+            id: draftId,
+            title: null,
+            createdAt,
+            isCoreMemory: false
+          };
+          setThreads((prev) => [draftThread, ...prev]);
+          setMessagesForThread(draftId, []);
+          activeId = draftId;
+          streamThreadId = draftId;
+          activeThreadRef.current = draftId;
+          setThreadId(draftId);
         }
 
         if (!activeId) return;
@@ -375,6 +380,51 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           assistantMessage
         ];
         setMessagesForThread(activeId, baseMessages);
+        streamThreadId = activeId;
+
+        let requestThreadId = activeId;
+        if (activeId.startsWith("draft-")) {
+          const created = await createRemoteThread();
+          const persistedId = created.id;
+          const draftId = activeId;
+          const draftMessages = messageCacheRef.current[draftId] ?? baseMessages;
+          const migratedMessages = draftMessages.map((message) => ({
+            ...message,
+            threadId: persistedId
+          }));
+
+          setMessageCache((prev) => {
+            const next = { ...prev };
+            delete next[draftId];
+            next[persistedId] = migratedMessages;
+            return next;
+          });
+          if (activeThreadRef.current === draftId) {
+            setMessages(migratedMessages);
+          }
+
+          setThreads((prev) => {
+            const merged = prev.map((thread) => {
+              if (thread.id !== draftId) return thread;
+              return {
+                ...thread,
+                id: persistedId
+              };
+            });
+            const targetTitle =
+              merged.find((thread) => thread.id === persistedId)?.title ??
+              deriveTitle(trimmed);
+            return merged.map((thread) =>
+              thread.id === persistedId ? { ...thread, title: thread.title ?? targetTitle } : thread
+            );
+          });
+
+          activeThreadRef.current = persistedId;
+          setThreadId(persistedId);
+          activeId = persistedId;
+          requestThreadId = persistedId;
+          streamThreadId = persistedId;
+        }
 
         const targetThread = threads.find((thread) => thread.id === activeId);
         if (!targetThread?.title?.trim()) {
@@ -387,7 +437,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           void persistRename(activeId, autoTitle).catch(() => null);
         }
 
-        const response = await fetch(`/api/chat/${activeId}/messages`, {
+        const response = await fetch(`/api/chat/${requestThreadId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: trimmed })
@@ -408,7 +458,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
           if (!chunk) continue;
-          updateMessagesForThread(activeId, (existing) => {
+          updateMessagesForThread(requestThreadId, (existing) => {
             const source = existing.length > 0 ? existing : baseMessages;
             return source.map((message) =>
               message.id === assistantId
@@ -422,10 +472,10 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           err instanceof Error ? err.message : "Failed to stream assistant output.";
         setError(message);
 
-        if (activeId) {
+        if (streamThreadId) {
           const fallback =
-            "I could not reach the backend stream, so here is a local fallback reply to keep the UI preview moving. The layout, spacing, typing flow, and auto-scroll behavior should still reflect normal chat usage while we debug the backend connection.";
-          updateMessagesForThread(activeId, (existing) =>
+            "I could not reach the backend stream, so here is a local fallback reply to keep momentum moving while we recover the connection.";
+          updateMessagesForThread(streamThreadId, (existing) =>
             existing.map((item) =>
               item.role === "assistant" && item.isStreaming
                 ? { ...item, content: item.content || fallback }
@@ -434,8 +484,8 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           );
         }
       } finally {
-        if (activeId) {
-          updateMessagesForThread(activeId, (existing) =>
+        if (streamThreadId) {
+          updateMessagesForThread(streamThreadId, (existing) =>
             existing.map((item) =>
               item.role === "assistant" && item.isStreaming
                 ? { ...item, isStreaming: false }
