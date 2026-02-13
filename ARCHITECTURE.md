@@ -8,7 +8,7 @@
   - `cortex-http-provider.ts`: CortexLTM API implementation (UI does not write SQL)
 - `src/lib/llm/`
   - `llm-provider.ts`: model streaming interface
-  - `default-llm-provider.ts`: demo-mode streaming implementation
+  - `default-llm-provider.ts`: OpenAI/Groq streaming provider used for demo/local mode, with soul-contract system injection
 - `src/lib/server/`
   - `providers.ts`: provider selection + singleton lifecycle
   - `db.ts`: postgres pool initialization
@@ -16,7 +16,9 @@
   - `http.ts`: shared API error payload helper
 - `src/app/api/chat/`
   - `threads/route.ts`: list/create thread endpoints
+  - `[threadId]/route.ts`: rename/delete thread endpoints
   - `[threadId]/messages/route.ts`: message read + ordered write/stream endpoint
+  - `[threadId]/promote/route.ts`: promote thread to core-memory endpoint
   - `[threadId]/summary/route.ts`: optional summary fetch endpoint
 - `src/components/chat/`
   - `chat-shell.tsx`: page-level composition
@@ -43,6 +45,11 @@
    - build context (summary cues + semantic cues + short-term events)
    - generate assistant response
    - persist assistant event (`source: chatui_llm`)
+
+## Error Propagation
+
+- CortexUI now preserves upstream CortexLTM HTTP status/error details for thread/message routes.
+- This avoids masking backend failures as generic `503` responses, making operational debugging faster.
 
 ## Cue Policy (v1 parity)
 
