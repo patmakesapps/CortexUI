@@ -33,13 +33,14 @@
 
 - Memory backend: implement `MemoryProvider`, then switch selection in `getMemoryProvider`.
 - Model provider: backend-owned in CortexLTM when `CHAT_DEMO_MODE=false`.
+- Agent orchestration: set `CORTEX_AGENT_ENABLED=true` to route chat via CortexAgent while keeping the same UI route contracts.
 - UI composition: keep message contracts stable (`UIMessage`) and replace components independently.
 
 ## Request Lifecycle (`POST /api/chat/[threadId]/messages`)
 
 1. Validate payload.
 2. If `CHAT_DEMO_MODE=true`, stream local demo output.
-3. Otherwise proxy to CortexLTM `/v1/threads/{threadId}/chat`.
+3. Otherwise proxy to CortexLTM `/v1/threads/{threadId}/chat` or CortexAgent `/v1/agent/threads/{threadId}/chat` when enabled.
 4. CortexLTM performs ordered writes/context/model call:
    - persist user event (`source: chatui`)
    - build context (summary cues + semantic cues + short-term events)

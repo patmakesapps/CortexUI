@@ -46,6 +46,8 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    - `CORTEX_MEMORY_BACKEND=cortex_http`
    - `CORTEX_API_BASE_URL` (for example: `http://127.0.0.1:8000`)
    - Optional `CORTEX_API_KEY` (must match `CORTEXLTM_API_KEY` when backend auth is enabled)
+   - `CORTEX_AGENT_ENABLED=false` (set `true` to route chat through CortexAgent)
+   - `CORTEX_AGENT_BASE_URL` (for example: `http://127.0.0.1:8010`)
    - `AUTH_MODE=dev` (or `supabase` when backend enforces bearer tokens)
    - `APP_ORIGIN` (for example: `http://localhost:3000`, used for OAuth callback URLs)
    - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` when using Supabase auth
@@ -74,7 +76,7 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread
 - `GET /api/chat/[threadId]/messages` fetch recent messages
-- `POST /api/chat/[threadId]/messages` proxy chat orchestration to CortexLTM (`/v1/threads/{threadId}/chat`)
+- `POST /api/chat/[threadId]/messages` proxy chat orchestration to CortexLTM (`/v1/threads/{threadId}/chat`) or CortexAgent (`/v1/agent/threads/{threadId}/chat`) when enabled
 - `PATCH /api/chat/[threadId]` rename thread
 - `DELETE /api/chat/[threadId]` delete thread
 - `POST /api/chat/[threadId]/promote` promote thread to core memory

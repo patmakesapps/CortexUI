@@ -20,12 +20,18 @@ export class MemoryApiError extends Error {
 
 export class CortexHttpProvider implements MemoryProvider {
   private readonly baseUrl: string;
+  private readonly agentBaseUrl: string | null;
   private readonly apiKey: string | null;
   private readonly authorization: string | null;
 
   constructor(options?: { authorization?: string | null }) {
     const configured = process.env.CORTEX_API_BASE_URL ?? "http://127.0.0.1:8000";
     this.baseUrl = configured.replace(/\/+$/, "");
+    const agentEnabled = (process.env.CORTEX_AGENT_ENABLED ?? "false")
+      .trim()
+      .toLowerCase() === "true";
+    const configuredAgent = process.env.CORTEX_AGENT_BASE_URL ?? "http://127.0.0.1:8010";
+    this.agentBaseUrl = agentEnabled ? configuredAgent.replace(/\/+$/, "") : null;
     this.apiKey = process.env.CORTEX_API_KEY ?? null;
     this.authorization = options?.authorization ?? null;
   }
@@ -51,15 +57,16 @@ export class CortexHttpProvider implements MemoryProvider {
     signal?: AbortSignal
   ): Promise<Response> {
     const headers = this.createHeaders();
-    const response = await fetch(
-      `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ text }),
-        signal
-      }
-    );
+    const useAgent = Boolean(this.agentBaseUrl);
+    const url = useAgent
+      ? `${this.agentBaseUrl}/v1/agent/threads/${encodeURIComponent(threadId)}/chat`
+      : `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text }),
+      signal
+    });
 
     if (!response.ok) {
       const textBody = await response.text();
@@ -76,6 +83,16 @@ export class CortexHttpProvider implements MemoryProvider {
         (textBody ||
           `Memory API chat request failed with status ${response.status}.`);
       throw new MemoryApiError(message, response.status);
+    }
+
+    if (useAgent && isJsonResponse(response)) {
+      const payload = (await response.json().catch(() => ({}))) as JsonRecord;
+      const assistantText =
+        typeof payload.response === "string" ? payload.response : "";
+      return new Response(assistantText, {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" }
+      });
     }
 
     return response;
@@ -295,4 +312,9 @@ function readErrorMessage(payload: JsonRecord | null): string | null {
   }
   if (typeof payload.detail === "string") return payload.detail;
   return null;
+}
+
+function isJsonResponse(response: Response): boolean {
+  const value = response.headers.get("Content-Type") ?? "";
+  return value.toLowerCase().includes("application/json");
 }

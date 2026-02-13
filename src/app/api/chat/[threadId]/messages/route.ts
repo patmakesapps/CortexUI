@@ -140,7 +140,7 @@ export async function POST(
     if (isMemoryApiError(error)) {
       return jsonError(error.message, error.status);
     }
-    return jsonError("Failed to stream assistant output from CortexLTM.", 503, {
+    return jsonError("Failed to stream assistant output from chat backend.", 503, {
       cause: error instanceof Error ? error.message : "unknown"
     });
   }
