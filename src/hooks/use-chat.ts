@@ -185,8 +185,11 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
       try {
         await persistRename(targetThreadId, nextTitle);
       } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to rename thread.";
         setThreads(previous);
-        setError(err instanceof Error ? err.message : "Failed to rename thread.");
+        setError(message);
+        throw new Error(message);
       }
     },
     [persistRename, threads]
@@ -227,13 +230,14 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
         const payload = (await res.json().catch(() => null)) as
           | { error?: { message?: string } }
           | null;
+        const message = payload?.error?.message ?? "Failed to delete thread.";
         setThreads(previousThreads);
         activeThreadRef.current = previousThreadId;
         setThreadId(previousThreadId);
         setMessages(previousMessages);
         setMessageCache(previousCache);
-        setError(payload?.error?.message ?? "Failed to delete thread.");
-        return;
+        setError(message);
+        throw new Error(message);
       }
     },
     [loadThreadMessages, messages, threadId, threads]
@@ -245,15 +249,28 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
       try {
         const listRes = await fetch("/api/chat/threads", { method: "GET" });
         const listedThreads: ChatThread[] = [];
-        if (listRes.ok) {
-          const listData = (await listRes.json()) as { threads: ThreadRecord[] };
-          for (const thread of listData.threads ?? []) {
-            listedThreads.push({
-              id: thread.id,
-              title: thread.title,
-              createdAt: thread.createdAt
-            });
-          }
+        if (!listRes.ok) {
+          const payload = (await listRes.json().catch(() => null)) as
+            | { error?: { message?: string } }
+            | null;
+          throw new Error(payload?.error?.message ?? "Failed to load threads.");
+        }
+
+        const listData = (await listRes.json()) as {
+          threads: ThreadRecord[];
+          degraded?: boolean;
+          warning?: string;
+        };
+        if (listData.degraded) {
+          throw new Error(listData.warning ?? "Chat backend is currently unavailable.");
+        }
+
+        for (const thread of listData.threads ?? []) {
+          listedThreads.push({
+            id: thread.id,
+            title: thread.title,
+            createdAt: thread.createdAt
+          });
         }
 
         setThreads(listedThreads);

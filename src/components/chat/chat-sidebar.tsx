@@ -40,6 +40,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(
     null
   );
@@ -59,11 +60,18 @@ export function ChatSidebar({
 
   const submitRename = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    if (!editingThreadId) return;
+    if (!editingThreadId || isRenaming) return;
     const nextTitle = draftTitle.trim();
     if (!nextTitle) return;
-    await onRenameThread(editingThreadId, nextTitle);
-    setEditingThreadId(null);
+    try {
+      setIsRenaming(true);
+      await onRenameThread(editingThreadId, nextTitle);
+      setEditingThreadId(null);
+    } catch {
+      // Global error modal handles rename failures.
+    } finally {
+      setIsRenaming(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -120,10 +128,20 @@ export function ChatSidebar({
                         autoFocus
                         value={draftTitle}
                         onChange={(event) => setDraftTitle(event.target.value)}
-                        onBlur={() => setEditingThreadId(null)}
+                        onBlur={() => void submitRename()}
                         className="w-full rounded-md border border-slate-500/70 bg-slate-900/80 px-2 py-1.5 text-sm text-slate-100 outline-none ring-cyan-400/35 focus:ring-1"
                         maxLength={120}
+                        disabled={isRenaming}
                       />
+                      <div className="mt-1.5 flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={isRenaming}
+                          className="inline-flex h-7 items-center justify-center rounded-md border border-cyan-500/45 bg-cyan-500/15 px-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isRenaming ? "Saving..." : "Save"}
+                        </button>
+                      </div>
                     </form>
                   ) : (
                     <div className="group flex items-center gap-1">
