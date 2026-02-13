@@ -27,5 +27,8 @@ export interface MemoryProvider {
   listThreads?(userId: string, limit?: number): Promise<ThreadRecord[]>;
   renameThread?(threadId: string, title: string): Promise<void>;
   deleteThread?(threadId: string): Promise<void>;
+  promoteThreadToCoreMemory?(
+    threadId: string
+  ): Promise<{ summary: string | null; summaryUpdated: boolean; isCoreMemory: boolean }>;
   getActiveSummary?(threadId: string): Promise<string | null>;
 }

@@ -7,7 +7,7 @@ export type ChatMessage = UIMessage & {
   isStreaming?: boolean;
 };
 
-export type ChatThread = Pick<ThreadRecord, "id" | "title" | "createdAt">;
+export type ChatThread = Pick<ThreadRecord, "id" | "title" | "createdAt" | "isCoreMemory">;
 
 type UseChatResult = {
   threadId: string | null;
@@ -21,6 +21,7 @@ type UseChatResult = {
   createThread: () => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
+  promoteThread: (threadId: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
 };
 
@@ -135,14 +136,16 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
       return {
         id: threadData.threadId,
         title: null,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        isCoreMemory: false
       };
     }
     if (allowLocalFallback) {
       return {
         id: `local-${crypto.randomUUID()}`,
         title: null,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        isCoreMemory: false
       };
     }
     throw new Error("Unable to create a new chat thread.");
@@ -243,6 +246,26 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
     [loadThreadMessages, messages, threadId, threads]
   );
 
+  const promoteThread = useCallback(async (targetThreadId: string) => {
+    if (targetThreadId.startsWith("local-") || targetThreadId.startsWith("draft-")) {
+      throw new Error("Only persisted chats can be promoted to core memory.");
+    }
+    const res = await fetch(`/api/chat/${targetThreadId}/promote`, { method: "POST" });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as
+        | { error?: { message?: string } }
+        | null;
+      throw new Error(
+        payload?.error?.message ?? "Failed to promote thread to core memory."
+      );
+    }
+    setThreads((prev) =>
+      prev.map((thread) =>
+        thread.id === targetThreadId ? { ...thread, isCoreMemory: true } : thread
+      )
+    );
+  }, []);
+
   useEffect(() => {
     const bootstrap = async () => {
       setIsBootstrapping(true);
@@ -269,7 +292,8 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           listedThreads.push({
             id: thread.id,
             title: thread.title,
-            createdAt: thread.createdAt
+            createdAt: thread.createdAt,
+            isCoreMemory: thread.isCoreMemory
           });
         }
 
@@ -438,6 +462,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
       createThread,
       renameThread,
       deleteThread,
+      promoteThread,
       sendMessage
     }),
     [
@@ -448,6 +473,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
       isBootstrapping,
       isStreaming,
       messages,
+      promoteThread,
       renameThread,
       selectThread,
       sendMessage,

@@ -74,7 +74,8 @@ export class CortexHttpProvider implements MemoryProvider {
       id: String(row.id ?? ""),
       userId: String(row.user_id ?? userId),
       title: typeof row.title === "string" ? row.title : null,
-      createdAt: new Date(String(row.created_at ?? new Date().toISOString())).toISOString()
+      createdAt: new Date(String(row.created_at ?? new Date().toISOString())).toISOString(),
+      isCoreMemory: Boolean(row.is_core_memory)
     }));
   }
 
@@ -92,6 +93,23 @@ export class CortexHttpProvider implements MemoryProvider {
     await this.requestJson(`/v1/threads/${encodeURIComponent(threadId)}`, {
       method: "DELETE"
     });
+  }
+
+  async promoteThreadToCoreMemory(
+    threadId: string
+  ): Promise<{ summary: string | null; summaryUpdated: boolean; isCoreMemory: boolean }> {
+    const payload = await this.requestJson<{
+      summary?: unknown;
+      summary_updated?: unknown;
+      is_core_memory?: unknown;
+    }>(`/v1/threads/${encodeURIComponent(threadId)}/promote-core-memory`, {
+      method: "POST"
+    });
+    return {
+      summary: typeof payload.summary === "string" ? payload.summary : null,
+      summaryUpdated: Boolean(payload.summary_updated),
+      isCoreMemory: Boolean(payload.is_core_memory)
+    };
   }
 
   async addUserEvent(

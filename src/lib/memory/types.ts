@@ -25,4 +25,5 @@ export type ThreadRecord = {
   userId: string;
   title: string | null;
   createdAt: string;
+  isCoreMemory?: boolean;
 };

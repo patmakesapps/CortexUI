@@ -24,6 +24,7 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
     createThread,
     renameThread,
     deleteThread,
+    promoteThread,
     sendMessage
   } = useChat({ allowLocalFallback });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -59,6 +60,7 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
           }}
           onRenameThread={renameThread}
           onDeleteThread={deleteThread}
+          onPromoteThread={promoteThread}
         />
       </aside>
 
