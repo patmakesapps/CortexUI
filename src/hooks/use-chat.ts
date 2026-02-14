@@ -172,15 +172,27 @@ export function useChat(): UseChatResult {
         method: "GET"
       });
       if (!messagesRes.ok) {
-        if (currentLoad === loadCounter.current) {
-          setMessagesForThread(targetThreadId, []);
-        }
-        return;
+        const payload = (await messagesRes.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        throw new Error(
+          payload?.error?.message ?? "Could not load messages for this chat."
+        );
       }
 
-      const messageData = (await messagesRes.json()) as { messages: UIMessage[] };
+      const messageData = (await messagesRes.json()) as {
+        messages?: UIMessage[];
+        degraded?: boolean;
+        warning?: string;
+      };
+      if (messageData.degraded) {
+        throw new Error(messageData.warning ?? "Chat messages are temporarily unavailable.");
+      }
       if (currentLoad !== loadCounter.current) return;
-      setMessagesForThread(targetThreadId, messageData.messages);
+      setMessagesForThread(
+        targetThreadId,
+        Array.isArray(messageData.messages) ? messageData.messages : []
+      );
     },
     [setMessagesForThread]
   );
@@ -218,14 +230,19 @@ export function useChat(): UseChatResult {
 
   const selectThread = useCallback(
     async (nextThreadId: string) => {
-      if (!nextThreadId || nextThreadId === threadId) return;
+      if (!nextThreadId) return;
+      if (nextThreadId === threadId && (messageCacheRef.current[nextThreadId] ?? []).length > 0) {
+        return;
+      }
       setError(null);
       activeThreadRef.current = nextThreadId;
       setThreadId(nextThreadId);
       setMessages([]);
       setIsThreadTransitioning(true);
       try {
-        await loadThreadMessages(nextThreadId);
+        await loadThreadMessages(nextThreadId, false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load this chat.");
       } finally {
         setIsThreadTransitioning(false);
       }
@@ -290,7 +307,12 @@ export function useChat(): UseChatResult {
         activeThreadRef.current = nextActive;
         setThreadId(nextActive);
         if (nextActive) {
-          await loadThreadMessages(nextActive);
+          try {
+            await loadThreadMessages(nextActive);
+          } catch (err) {
+            setMessages([]);
+            setError(err instanceof Error ? err.message : "Could not load this chat.");
+          }
         } else {
           setMessages([]);
         }
@@ -374,7 +396,12 @@ export function useChat(): UseChatResult {
         activeThreadRef.current = firstId;
         setThreadId(firstId);
         if (firstId) {
-          await loadThreadMessages(firstId, false);
+          try {
+            await loadThreadMessages(firstId, false);
+          } catch (err) {
+            setMessages([]);
+            setError(err instanceof Error ? err.message : "Could not load this chat.");
+          }
         } else {
           setMessages([]);
         }

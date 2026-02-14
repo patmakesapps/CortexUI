@@ -7,11 +7,14 @@ export const runtime = "nodejs";
 
 const GOOGLE_STATE_COOKIE = "cortex_google_oauth_state";
 const GOOGLE_PKCE_COOKIE = "cortex_google_oauth_pkce_verifier";
+const GOOGLE_REQUESTED_SCOPES_COOKIE = "cortex_google_oauth_requested_scopes";
 const DEFAULT_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/calendar.events"
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.compose"
 ];
 
 function base64Url(value: Buffer): string {
@@ -71,7 +74,6 @@ export async function POST(req: NextRequest) {
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     access_type: "offline",
-    include_granted_scopes: "true",
     prompt: "consent"
   });
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -86,6 +88,13 @@ export async function POST(req: NextRequest) {
     maxAge: 60 * 10
   });
   out.cookies.set(GOOGLE_PKCE_COOKIE, codeVerifier, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    path: "/",
+    maxAge: 60 * 10
+  });
+  out.cookies.set(GOOGLE_REQUESTED_SCOPES_COOKIE, scopes.join(" "), {
     httpOnly: true,
     sameSite: "lax",
     secure,
