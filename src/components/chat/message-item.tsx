@@ -116,7 +116,9 @@ function parseContent(content: string): ContentPart[] {
     const trimmedStart = line.trimStart();
 
     if (!inCode) {
-      const openMatch = trimmedStart.match(/^(```+|~~~+)\s*([^\s`~]+)?(?:\s.*)?$/);
+      const openMatch = trimmedStart.match(
+        /^(?:(?:[-*+]|\d+\.)\s+)?(```+|~~~+)\s*([^\s`~]+)?(?:\s.*)?$/
+      );
       if (openMatch) {
         flushText();
         inCode = true;
@@ -129,7 +131,8 @@ function parseContent(content: string): ContentPart[] {
       continue;
     }
 
-    const closePattern = new RegExp(`^${fenceChar}{${fenceLength},}\\s*$`);
+    // Be tolerant of occasional trailing text after closing fences from streamed LLM output.
+    const closePattern = new RegExp(`^${fenceChar}{${fenceLength},}(?:\\s.*)?$`);
     if (trimmedStart.match(closePattern)) {
       flushCode();
       inCode = false;
@@ -143,9 +146,8 @@ function parseContent(content: string): ContentPart[] {
   }
 
   if (inCode) {
-    const rawFence = fenceChar.repeat(fenceLength);
-    textBuffer.push(`${rawFence}${language === "text" ? "" : language}`);
-    textBuffer = textBuffer.concat(codeBuffer);
+    // If the model forgets a closing fence, keep rendering as code so copy UX still works.
+    flushCode();
   }
 
   flushText();
