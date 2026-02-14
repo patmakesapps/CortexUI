@@ -52,6 +52,8 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    - Optional `CORTEX_API_KEY` (must match `CORTEXLTM_API_KEY` when backend auth is enabled)
    - `CORTEX_AGENT_ENABLED=true` (recommended for agentic routing + web search)
    - `CORTEX_AGENT_BASE_URL` (for example: `http://127.0.0.1:8010`)
+   - `GOOGLE_CLIENT_ID` (required for Google connected-app OAuth start flow)
+   - Optional `GOOGLE_REDIRECT_URI` (must match Google OAuth client redirect URI; defaults to `/api/integrations/google/callback` on current origin)
    - `AUTH_MODE=dev` (or `supabase` when backend enforces bearer tokens)
    - `APP_ORIGIN` (for example: `http://localhost:3000`, used for OAuth callback URLs)
    - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` when using Supabase auth
@@ -77,6 +79,8 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `POST /api/auth/sign-up` email/password account creation
 - `POST /api/auth/oauth/start` start OAuth login (Google/GitHub)
 - `POST /api/auth/sign-out` clear local auth cookies
+- `POST /api/integrations/google/start` generate Google OAuth URL + PKCE/state cookies
+- `GET /api/integrations/google/callback` OAuth callback relay to CortexAgent connect endpoint
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread
 - `GET /api/chat/[threadId]/messages` fetch recent messages
