@@ -58,3 +58,12 @@
 - Summary cues: recap, summarize, catch me up, where were we, continue
 - Semantic cues: remember, what did i say, what was the plan, who am i, my name
 - Memory blocks are prepended as `system` messages before short-term turns.
+
+## Markdown Rendering Resilience
+
+- `src/components/chat/message-item.tsx` parses streamed assistant content defensively.
+- Code-fence parsing handles:
+  - optional list markers before opening fences
+  - trailing text after closing fences
+  - missing closing fences by flushing buffered code as a code block
+- Goal: keep transcript rendering and copy behavior stable under imperfect streamed model output.

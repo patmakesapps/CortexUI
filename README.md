@@ -16,6 +16,10 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
 - Added soul-contract injection for local/demo provider calls via `CORTEX_SOUL_SPEC_PATH` or `../CortexLTM/soul/SOUL.md`.
 - Improved CortexLTM error propagation so UI routes return upstream status/details instead of generic 503s.
 - Added delete-confirmation loading UI using the shared brain loader.
+- Hardened assistant message rendering for streamed markdown code blocks:
+  - supports fenced blocks that start after list prefixes
+  - tolerates trailing text on closing fences
+  - preserves code rendering when a model omits a closing fence
 
 ## Status
 
@@ -99,3 +103,4 @@ This preserves summary trigger timing that depends on assistant writes.
 - CortexUI stores Supabase access/refresh tokens in HTTP-only cookies and forwards bearer auth to CortexLTM.
 - CortexLTM HTTP integration is isolated in `src/lib/memory/cortex-http-provider.ts`.
 - For local/demo provider mode (`CHAT_DEMO_MODE=true` or local threads), CortexUI prepends the soul contract before model calls.
+- Additional design/implementation details live in `ARCHITECTURE.md` and active work items are tracked in `TODO.md`.
