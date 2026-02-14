@@ -16,12 +16,13 @@ const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose"
 ];
 const GOOGLE_IDENTITY_SCOPES = ["openid", "email", "profile"];
+const GOOGLE_APP_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...CALENDAR_SCOPES, ...GMAIL_SCOPES];
 
 export function AppsShell() {
   const router = useRouter();
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [grantedScopes, setGrantedScopes] = useState<string[]>([]);
-  const [googleBusy, setGoogleBusy] = useState<null | "calendar" | "gmail" | "disconnect">(null);
+  const [googleBusy, setGoogleBusy] = useState<null | "connect" | "disconnect">(null);
   const [banner, setBanner] = useState<BannerState>(null);
 
   const refreshGoogleStatus = async () => {
@@ -52,7 +53,7 @@ export function AppsShell() {
     if (connected === "1") {
       setBanner({
         kind: "success",
-        message: "Google account linked. Grant access for each app below."
+        message: "Google account linked."
       });
       setGoogleConnected(true);
       params.delete("google_connected");
@@ -75,16 +76,13 @@ export function AppsShell() {
     void refreshGoogleStatus();
   }, []);
 
-  const connectGoogle = async (
-    app: "calendar" | "gmail",
-    scopes: string[]
-  ) => {
-    setGoogleBusy(app);
+  const connectGoogle = async () => {
+    setGoogleBusy("connect");
     try {
       const res = await fetch("/api/integrations/google/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scopes: [...GOOGLE_IDENTITY_SCOPES, ...scopes].join(" ") })
+        body: JSON.stringify({ scopes: GOOGLE_APP_SCOPES.join(" ") })
       });
       if (!res.ok) {
         const payload = (await res.json().catch(() => null)) as
@@ -166,6 +164,7 @@ export function AppsShell() {
   };
   const calendarReady = Boolean(googleConnected) && hasScopes(CALENDAR_SCOPES);
   const gmailReady = Boolean(googleConnected) && hasScopes(GMAIL_SCOPES);
+  const allGoogleAppsReady = calendarReady && gmailReady;
 
   return (
     <main className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-4 py-8 md:px-6">
@@ -204,30 +203,29 @@ export function AppsShell() {
 
       <div className="space-y-4">
         <IntegrationCard
-          name="Google Calendar"
-          description="Read upcoming events and create events in your primary calendar."
-          icon={<CalendarIcon />}
-          connected={calendarReady}
+          name="Google"
+          description="One connection for all Google apps. Current: Calendar and Gmail."
+          icon={<GoogleIcon />}
+          connected={allGoogleAppsReady}
           checking={googleConnected === null}
-          buttonLabel={calendarReady ? "Disconnect Google Access" : "Grant Calendar Access"}
-          busy={calendarReady ? googleBusy === "disconnect" : googleBusy === "calendar"}
-          onConnect={() =>
-            calendarReady
-              ? void disconnectGoogle()
-              : void connectGoogle("calendar", CALENDAR_SCOPES)
-          }
-        />
-
-        <IntegrationCard
-          name="Gmail"
-          description="List recent threads, read email messages, draft replies, and send after confirmation."
-          icon={<GmailIcon />}
-          connected={gmailReady}
-          checking={googleConnected === null}
-          buttonLabel={gmailReady ? "Disconnect Google Access" : "Grant Gmail Access"}
-          busy={gmailReady ? googleBusy === "disconnect" : googleBusy === "gmail"}
-          onConnect={() =>
-            gmailReady ? void disconnectGoogle() : void connectGoogle("gmail", GMAIL_SCOPES)
+          buttonLabel={allGoogleAppsReady ? "Disconnect Google" : "Connect Google"}
+          busy={allGoogleAppsReady ? googleBusy === "disconnect" : googleBusy === "connect"}
+          onConnect={() => (allGoogleAppsReady ? void disconnectGoogle() : void connectGoogle())}
+          extra={
+            <div className="mt-3 grid gap-2 text-sm text-slate-300">
+              <AppStatusRow
+                icon={<CalendarIcon />}
+                name="Google Calendar"
+                description="Read upcoming events and create calendar events."
+                ready={calendarReady}
+              />
+              <AppStatusRow
+                icon={<GmailIcon />}
+                name="Gmail"
+                description="Read threads, draft replies, and send after confirmation."
+                ready={gmailReady}
+              />
+            </div>
           }
         />
       </div>
@@ -244,6 +242,7 @@ function IntegrationCard(props: {
   busy: boolean;
   buttonLabel: string;
   onConnect: () => void;
+  extra?: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-slate-700/80 bg-slate-900/65 p-4">
@@ -256,8 +255,7 @@ function IntegrationCard(props: {
             <h2 className="text-lg font-medium text-slate-100">{props.name}</h2>
             <p className="mt-1 text-sm text-slate-400">{props.description}</p>
             <p className="mt-1 text-xs text-slate-500">
-              Google access is shared across Calendar and Gmail. Disconnecting from either card
-              disconnects both.
+              Connect/disconnect applies to all Google apps in this group.
             </p>
           </div>
         </div>
@@ -281,7 +279,61 @@ function IntegrationCard(props: {
           {props.busy ? "Connecting..." : props.buttonLabel}
         </button>
       </div>
+      {props.extra}
     </div>
+  );
+}
+
+function AppStatusRow(props: {
+  icon: ReactNode;
+  name: string;
+  description: string;
+  ready: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2">
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-800/80">
+          {props.icon}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-slate-100">{props.name}</p>
+          <p className="text-xs text-slate-400">{props.description}</p>
+        </div>
+      </div>
+      <span
+        className={`rounded border px-2 py-1 text-xs ${
+          props.ready
+            ? "border-emerald-500/45 bg-emerald-500/15 text-emerald-200"
+            : "border-amber-500/45 bg-amber-500/15 text-amber-200"
+        }`}
+      >
+        {props.ready ? "Ready" : "Needs scope"}
+      </span>
+    </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+      <path
+        d="M21.35 12.15c0-.77-.07-1.5-.2-2.2H12v4.17h5.23a4.47 4.47 0 0 1-1.94 2.93v2.43h3.14c1.84-1.7 2.92-4.2 2.92-7.33Z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 21.6c2.63 0 4.84-.87 6.45-2.36l-3.14-2.43c-.87.58-1.99.92-3.31.92-2.55 0-4.71-1.72-5.48-4.02H3.28v2.5A9.73 9.73 0 0 0 12 21.6Z"
+        fill="#34A853"
+      />
+      <path
+        d="M6.52 13.71a5.86 5.86 0 0 1 0-3.42v-2.5H3.28a9.73 9.73 0 0 0 0 8.42l3.24-2.5Z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 6.27c1.43 0 2.72.49 3.73 1.46l2.8-2.8C16.84 3.37 14.63 2.4 12 2.4a9.73 9.73 0 0 0-8.72 5.39l3.24 2.5c.77-2.3 2.93-4.02 5.48-4.02Z"
+        fill="#EA4335"
+      />
+    </svg>
   );
 }
 

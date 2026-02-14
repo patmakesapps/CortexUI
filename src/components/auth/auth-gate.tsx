@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { AppsShell } from "@/components/apps/apps-shell";
 import { AuthPanel } from "@/components/auth/auth-panel";
@@ -27,7 +27,7 @@ export function AuthGate({ requireAuth, view = "chat" }: Props) {
   });
   const [isSigningOut, setIsSigningOut] = useState(false);
 
-  async function refreshSession() {
+  const refreshSession = useCallback(async () => {
     if (!requireAuth) return;
     setSession((prev) => ({ ...prev, loading: true, error: null }));
     try {
@@ -59,11 +59,11 @@ export function AuthGate({ requireAuth, view = "chat" }: Props) {
         error: "Auth check failed. Please refresh and try again."
       });
     }
-  }
+  }, [requireAuth]);
 
   useEffect(() => {
     void refreshSession();
-  }, [requireAuth]);
+  }, [refreshSession]);
 
   async function signOut() {
     setIsSigningOut(true);
