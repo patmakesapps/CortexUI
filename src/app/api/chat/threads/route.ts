@@ -72,26 +72,8 @@ export async function POST(req: NextRequest) {
     if (getAuthMode() === "supabase" && isAuthError(error)) {
       return jsonError("Your session expired. Please sign in again.", 401);
     }
-    if (getAuthMode() === "supabase") {
-      return jsonError("Could not create a thread at the moment.", 503);
-    }
-    const threadId = `local-${crypto.randomUUID()}`;
-    const response = NextResponse.json(
-      {
-        userId,
-        threadId,
-        degraded: true,
-        warning: error instanceof Error ? error.message : "unknown"
-      },
-      { status: 201 }
-    );
-    if (!req.cookies.get("cortex_user_id")) {
-      response.cookies.set("cortex_user_id", userId, {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/"
-      });
-    }
-    return response;
+    return jsonError("Could not create a thread at the moment.", 503, {
+      cause: error instanceof Error ? error.message : "unknown"
+    });
   }
 }

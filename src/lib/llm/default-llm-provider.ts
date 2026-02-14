@@ -42,7 +42,7 @@ export class DefaultLlmProvider implements LlmProvider {
   async *streamChat(params: StreamChatParams): AsyncIterable<string> {
     const messages = await withSoulContract(params.messages);
 
-    if (process.env.CHAT_DEMO_MODE !== "false") {
+    if ((process.env.CHAT_DEMO_MODE ?? "").trim().toLowerCase() === "true") {
       const prompt =
         messages
           .slice()

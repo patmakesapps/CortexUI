@@ -21,9 +21,6 @@ export async function GET(
   try {
     const { threadId } = await ctx.params;
     if (!threadId) return jsonError("threadId is required.", 400);
-    if (threadId.startsWith("local-")) {
-      return NextResponse.json({ threadId, summary: null });
-    }
 
     const memory = getMemoryProvider(getAuthFromRequest(req).authorization);
     const summary = (await memory.getActiveSummary?.(threadId)) ?? null;

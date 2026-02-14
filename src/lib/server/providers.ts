@@ -6,12 +6,15 @@ import { DefaultLlmProvider } from "@/lib/llm/default-llm-provider";
 let llmProvider: LlmProvider | null = null;
 
 export function getMemoryProvider(authorization?: string | null): MemoryProvider {
-  const backend = process.env.CORTEX_MEMORY_BACKEND ?? "cortex_http";
+  const rawBackend = process.env.CORTEX_MEMORY_BACKEND ?? "cortex_http";
+  const backend = rawBackend.trim().replace(/^['"]|['"]$/g, "").toLowerCase();
   switch (backend) {
     case "cortex_http":
+    case "cortex-http":
+    case "http":
       return new CortexHttpProvider({ authorization });
     default:
-      throw new Error(`Unsupported memory backend: ${backend}`);
+      throw new Error(`Unsupported memory backend: ${rawBackend}`);
   }
 }
 

@@ -20,8 +20,8 @@ export async function POST(
 ) {
   const { threadId } = await ctx.params;
   if (!threadId) return jsonError("threadId is required.", 400);
-  if (threadId.startsWith("local-") || threadId.startsWith("draft-")) {
-    return jsonError("Only persisted chats can be promoted to core memory.", 400);
+  if (threadId.startsWith("draft-") || threadId.startsWith("local-")) {
+    return jsonError("threadId is invalid.", 400);
   }
 
   try {

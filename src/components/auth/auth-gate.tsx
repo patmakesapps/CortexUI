@@ -121,7 +121,7 @@ export function AuthGate({ requireAuth }: Props) {
         </div>
       </div>
       <div className="h-full pt-[78px]">
-        <ChatShell allowLocalFallback={!requireAuth} />
+        <ChatShell />
       </div>
     </div>
   );

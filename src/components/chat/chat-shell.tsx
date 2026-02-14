@@ -7,11 +7,7 @@ import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { BrainLoader } from "@/components/ui/brain-loader";
 import { useChat } from "@/hooks/use-chat";
 
-type Props = {
-  allowLocalFallback?: boolean;
-};
-
-export function ChatShell({ allowLocalFallback = true }: Props) {
+export function ChatShell() {
   const {
     threadId,
     threads,
@@ -26,7 +22,7 @@ export function ChatShell({ allowLocalFallback = true }: Props) {
     deleteThread,
     promoteThread,
     sendMessage
-  } = useChat({ allowLocalFallback });
+  } = useChat();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);

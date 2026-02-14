@@ -288,8 +288,6 @@ export function ChatSidebar({
                                   }}
                                   disabled={
                                     isPromoting ||
-                                    thread.id.startsWith("local-") ||
-                                    thread.id.startsWith("draft-") ||
                                     Boolean(thread.isCoreMemory)
                                   }
                                   className="mt-0.5 flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-slate-100 transition hover:bg-slate-700/85 disabled:cursor-not-allowed disabled:opacity-55"

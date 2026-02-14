@@ -29,9 +29,6 @@ export async function PATCH(
 ) {
   const { threadId } = await ctx.params;
   if (!threadId) return jsonError("threadId is required.", 400);
-  if (threadId.startsWith("local-")) {
-    return NextResponse.json({ threadId, ok: true });
-  }
 
   const payload = (await req.json().catch(() => ({}))) as RenamePayload;
   const rawTitle = typeof payload.title === "string" ? payload.title : "";
@@ -65,9 +62,7 @@ export async function DELETE(
 ) {
   const { threadId } = await ctx.params;
   if (!threadId) return jsonError("threadId is required.", 400);
-  if (threadId.startsWith("local-") || threadId.startsWith("draft-")) {
-    return NextResponse.json({ threadId, ok: true });
-  }
+  if (threadId.startsWith("draft-")) return jsonError("threadId is invalid.", 400);
 
   try {
     const memory = getMemoryProvider(getAuthFromRequest(req).authorization);
