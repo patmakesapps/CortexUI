@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import type { ChatMessage } from "@/hooks/use-chat";
 
@@ -31,6 +31,63 @@ type AgentRouteMeta = {
   mode: "agent" | "agent_fallback" | "memory_direct";
   warning?: string;
 };
+
+const URL_PATTERN = /(https?:\/\/[^\s<>"`]+)/g;
+
+function splitTrailingPunctuation(url: string): { href: string; trailing: string } {
+  const match = url.match(/([)\].,!?:;]+)$/);
+  if (!match) {
+    return { href: url, trailing: "" };
+  }
+  const trailing = match[1];
+  return {
+    href: url.slice(0, -trailing.length),
+    trailing
+  };
+}
+
+function renderTextWithLinks(value: string) {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  URL_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null = URL_PATTERN.exec(value);
+
+  while (match) {
+    const rawUrl = match[0];
+    const start = match.index;
+    const end = start + rawUrl.length;
+    const { href, trailing } = splitTrailingPunctuation(rawUrl);
+
+    if (start > lastIndex) {
+      nodes.push(value.slice(lastIndex, start));
+    }
+
+    nodes.push(
+      <a
+        key={`${start}-${href}`}
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="underline decoration-cyan-300/60 underline-offset-4 transition hover:text-cyan-200 hover:decoration-cyan-200"
+      >
+        {href}
+      </a>
+    );
+
+    if (trailing) {
+      nodes.push(trailing);
+    }
+
+    lastIndex = end;
+    match = URL_PATTERN.exec(value);
+  }
+
+  if (lastIndex < value.length) {
+    nodes.push(value.slice(lastIndex));
+  }
+
+  return nodes.length > 0 ? nodes : value;
+}
 
 function parseContent(content: string): ContentPart[] {
   const parts: ContentPart[] = [];
@@ -196,6 +253,14 @@ export function MessageItem({ message }: MessageItemProps) {
   const parts = isUser ? [] : parseContent(message.content || " ");
   const agentTrace = isUser ? null : readAgentTraceMeta(message);
   const agentRoute = isUser ? null : readAgentRouteMeta(message);
+  const isChatRouted = agentTrace?.action === "chat";
+  const normalizedAction = agentTrace ? toTitleCase(agentTrace.action) : "";
+  const visibleCapabilities = agentTrace
+    ? agentTrace.capabilities.filter(
+        (capability) =>
+          capability.label.trim().toLowerCase() !== normalizedAction.trim().toLowerCase()
+      )
+    : [];
 
   const handleCopy = async (value: string, partIndex: number) => {
     try {
@@ -220,7 +285,7 @@ export function MessageItem({ message }: MessageItemProps) {
           <p className="font-semibold tracking-wide text-amber-50">Agent fallback</p>
           <p>{agentRoute.warning ?? "Agentic tools were unavailable. This reply used direct memory mode."}</p>
         </div>
-      ) : agentTrace ? (
+      ) : agentTrace && !isChatRouted ? (
         <div className="mb-3 rounded-2xl border border-cyan-300/35 bg-gradient-to-r from-cyan-500/22 via-cyan-400/10 to-transparent px-3 py-2 text-[12px] leading-5 text-cyan-100 shadow-[0_14px_30px_rgb(8_47_73/0.25)] backdrop-blur-sm">
           <p className="font-semibold tracking-wide text-cyan-50">Agentic behavior active</p>
           <p>
@@ -230,15 +295,15 @@ export function MessageItem({ message }: MessageItemProps) {
           </p>
         </div>
       ) : null}
-      {agentTrace ? (
+      {agentTrace && !isChatRouted ? (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
           <span className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-2.5 py-0.5 font-semibold uppercase tracking-wide text-cyan-200">
             Agent Mode
           </span>
           <span className="rounded-full border border-slate-400/30 bg-slate-700/40 px-2.5 py-0.5 font-semibold text-slate-200">
-            {toTitleCase(agentTrace.action)}
+            {normalizedAction}
           </span>
-          {agentTrace.capabilities.map((capability) => (
+          {visibleCapabilities.map((capability) => (
             <span
               key={`${message.id}-${capability.id}`}
               className="rounded-full border border-emerald-300/30 bg-emerald-500/15 px-2.5 py-0.5 font-semibold text-emerald-200"
@@ -256,7 +321,7 @@ export function MessageItem({ message }: MessageItemProps) {
             }
             return (
               <p key={`${message.id}-text-${index}`} className="whitespace-pre-wrap">
-                {part.value}
+                {renderTextWithLinks(part.value)}
               </p>
             );
           }
