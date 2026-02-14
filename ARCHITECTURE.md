@@ -41,6 +41,7 @@
 1. Validate payload.
 2. If `CHAT_DEMO_MODE=true`, stream local demo output.
 3. Otherwise proxy to CortexLTM `/v1/threads/{threadId}/chat` or CortexAgent `/v1/agent/threads/{threadId}/chat` when enabled.
+   - The proxy forwards agent trace metadata via headers (`x-cortex-agent-trace`, `x-cortex-route-mode`, `x-cortex-route-warning`) so UI can show live agent status and fallback alerts.
 4. CortexLTM performs ordered writes/context/model call:
    - persist user event (`source: chatui`)
    - build context (summary cues + semantic cues + short-term events)

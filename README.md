@@ -46,12 +46,12 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    - `CORTEX_MEMORY_BACKEND=cortex_http`
    - `CORTEX_API_BASE_URL` (for example: `http://127.0.0.1:8000`)
    - Optional `CORTEX_API_KEY` (must match `CORTEXLTM_API_KEY` when backend auth is enabled)
-   - `CORTEX_AGENT_ENABLED=false` (set `true` to route chat through CortexAgent)
+   - `CORTEX_AGENT_ENABLED=true` (recommended for agentic routing + web search)
    - `CORTEX_AGENT_BASE_URL` (for example: `http://127.0.0.1:8010`)
    - `AUTH_MODE=dev` (or `supabase` when backend enforces bearer tokens)
    - `APP_ORIGIN` (for example: `http://localhost:3000`, used for OAuth callback URLs)
    - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` when using Supabase auth
-   - Keep `CHAT_DEMO_MODE=false` for real backend chat (set to `true` only for local UI demos)
+   - Keep `CHAT_DEMO_MODE=false` for real backend chat (set to `true` only for isolated local UI demos)
    - Optional `CORTEX_SOUL_SPEC_PATH` (absolute or workspace-relative path to `SOUL.md`)
 4. Start development server:
    ```bash

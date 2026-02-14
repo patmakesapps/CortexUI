@@ -7,6 +7,11 @@ import { MemoryApiError } from "@/lib/memory/cortex-http-provider";
 export const runtime = "nodejs";
 
 const MAX_MESSAGE_LENGTH = 6000;
+const FORWARDED_UPSTREAM_HEADERS = [
+  "x-cortex-agent-trace",
+  "x-cortex-route-mode",
+  "x-cortex-route-warning"
+];
 
 type MessagePayload = {
   text?: string;
@@ -31,9 +36,6 @@ export async function GET(
 ) {
   const { threadId } = await ctx.params;
   if (!threadId) return jsonError("threadId is required.", 400);
-  if (threadId.startsWith("local-")) {
-    return Response.json({ threadId, messages: [] });
-  }
 
   try {
     const memory = getMemoryProvider(getAuthFromRequest(req).authorization);
@@ -73,9 +75,8 @@ export async function POST(
     });
   }
 
-  const demoMode = process.env.CHAT_DEMO_MODE !== "false";
-  const isLocalThread = threadId.startsWith("local-");
-  const shouldUseDemo = demoMode || isLocalThread;
+  const demoMode = (process.env.CHAT_DEMO_MODE ?? "").trim().toLowerCase() === "true";
+  const shouldUseDemo = demoMode;
   const memory = getMemoryProvider(getAuthFromRequest(req).authorization);
 
   if (shouldUseDemo) {
@@ -125,13 +126,18 @@ export async function POST(
       return jsonError("Selected memory backend does not implement chat().", 500);
     }
     const upstream = await memory.chat(threadId, text, req.signal);
+    const headers = new Headers({
+      "Content-Type":
+        upstream.headers.get("Content-Type") ?? "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform"
+    });
+    for (const name of FORWARDED_UPSTREAM_HEADERS) {
+      const value = upstream.headers.get(name);
+      if (value) headers.set(name, value);
+    }
     return new Response(upstream.body, {
       status: upstream.status,
-      headers: {
-        "Content-Type":
-          upstream.headers.get("Content-Type") ?? "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform"
-      }
+      headers
     });
   } catch (error) {
     if (getAuthMode() === "supabase" && isAuthError(error)) {
@@ -140,8 +146,11 @@ export async function POST(
     if (isMemoryApiError(error)) {
       return jsonError(error.message, error.status);
     }
-    return jsonError("Failed to stream assistant output from chat backend.", 503, {
-      cause: error instanceof Error ? error.message : "unknown"
-    });
+    const cause = error instanceof Error ? error.message : "unknown";
+    return jsonError(
+      `Failed to stream assistant output from chat backend: ${cause}`,
+      503,
+      { cause }
+    );
   }
 }

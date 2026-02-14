@@ -25,6 +25,28 @@ type UseChatResult = {
   sendMessage: (text: string) => Promise<void>;
 };
 
+type AgentCapability = {
+  id: string;
+  type: "tool";
+  label: string;
+};
+
+type AgentRouteMode = "agent" | "agent_fallback" | "memory_direct";
+
+type AgentRouteMeta = {
+  mode: AgentRouteMode;
+  warning?: string;
+};
+
+type AgentTraceMeta = {
+  version: number;
+  source: string;
+  action: string;
+  reason?: string;
+  confidence?: number;
+  capabilities: AgentCapability[];
+};
+
 function deriveTitle(text: string): string {
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (!cleaned) return "New chat";
@@ -32,8 +54,62 @@ function deriveTitle(text: string): string {
   return words.length > 60 ? `${words.slice(0, 57)}...` : words;
 }
 
-export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResult {
-  const allowLocalFallback = options?.allowLocalFallback ?? true;
+function parseAgentTraceMeta(headers: Headers): AgentTraceMeta | null {
+  const raw = headers.get("x-cortex-agent-trace");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const action = typeof parsed.action === "string" ? parsed.action.trim() : "";
+    if (!action) return null;
+    const version = typeof parsed.version === "number" ? parsed.version : 1;
+    const source = typeof parsed.source === "string" ? parsed.source : "cortex-agent";
+    const reason = typeof parsed.reason === "string" ? parsed.reason : undefined;
+    const confidence =
+      typeof parsed.confidence === "number" ? parsed.confidence : undefined;
+    const capabilitiesRaw = Array.isArray(parsed.capabilities)
+      ? parsed.capabilities
+      : [];
+    const capabilities = capabilitiesRaw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        const id = typeof row.id === "string" ? row.id.trim() : "";
+        const type = row.type === "tool" ? "tool" : null;
+        const label = typeof row.label === "string" ? row.label.trim() : "";
+        if (!id || !type || !label) return null;
+        return { id, type, label } satisfies AgentCapability;
+      })
+      .filter((item): item is AgentCapability => item !== null);
+
+    return {
+      version,
+      source,
+      action,
+      ...(reason ? { reason } : {}),
+      ...(typeof confidence === "number" ? { confidence } : {}),
+      capabilities
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseAgentRouteMeta(headers: Headers): AgentRouteMeta | null {
+  const rawMode = headers.get("x-cortex-route-mode");
+  if (!rawMode) return null;
+  const mode = rawMode.trim().toLowerCase();
+  if (mode !== "agent" && mode !== "agent_fallback" && mode !== "memory_direct") {
+    return null;
+  }
+  const warningRaw = headers.get("x-cortex-route-warning");
+  const warning = warningRaw?.trim();
+  return {
+    mode: mode as AgentRouteMode,
+    ...(warning ? { warning } : {})
+  };
+}
+
+export function useChat(): UseChatResult {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -89,11 +165,6 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
         return;
       }
 
-      if (targetThreadId.startsWith("local-") || targetThreadId.startsWith("draft-")) {
-        setMessagesForThread(targetThreadId, []);
-        return;
-      }
-
       const currentLoad = ++loadCounter.current;
       const messagesRes = await fetch(`/api/chat/${targetThreadId}/messages`, {
         method: "GET"
@@ -113,7 +184,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
   );
 
   const persistRename = useCallback(async (targetThreadId: string, title: string) => {
-    if (targetThreadId.startsWith("local-") || targetThreadId.startsWith("draft-")) {
+    if (targetThreadId.startsWith("draft-")) {
       return;
     }
     const res = await fetch(`/api/chat/${targetThreadId}`, {
@@ -140,16 +211,8 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
         isCoreMemory: false
       };
     }
-    if (allowLocalFallback) {
-      return {
-        id: `local-${crypto.randomUUID()}`,
-        title: null,
-        createdAt: new Date().toISOString(),
-        isCoreMemory: false
-      };
-    }
     throw new Error("Unable to create a new chat thread.");
-  }, [allowLocalFallback]);
+  }, []);
 
   const selectThread = useCallback(
     async (nextThreadId: string) => {
@@ -224,7 +287,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
         }
       }
 
-      if (targetThreadId.startsWith("local-") || targetThreadId.startsWith("draft-")) {
+      if (targetThreadId.startsWith("draft-")) {
         return;
       }
 
@@ -247,7 +310,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
   );
 
   const promoteThread = useCallback(async (targetThreadId: string) => {
-    if (targetThreadId.startsWith("local-") || targetThreadId.startsWith("draft-")) {
+    if (targetThreadId.startsWith("draft-")) {
       throw new Error("Only persisted chats can be promoted to core memory.");
     }
     const res = await fetch(`/api/chat/${targetThreadId}/promote`, { method: "POST" });
@@ -307,16 +370,9 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
           setMessages([]);
         }
       } catch (err) {
-        if (allowLocalFallback) {
-          setThreads([]);
-          activeThreadRef.current = null;
-          setThreadId(null);
-          setMessages([]);
-        } else {
-          setThreadId(null);
-          setThreads([]);
-          setMessages([]);
-        }
+        setThreadId(null);
+        setThreads([]);
+        setMessages([]);
         setError(err instanceof Error ? err.message : "Failed to initialize chat.");
       } finally {
         setIsBootstrapping(false);
@@ -324,7 +380,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
     };
 
     void bootstrap();
-  }, [allowLocalFallback, loadThreadMessages]);
+  }, [loadThreadMessages]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -339,20 +395,20 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
 
       try {
         if (!activeId) {
-          const draftId = `draft-${crypto.randomUUID()}`;
           const createdAt = new Date().toISOString();
-          const draftThread: ChatThread = {
-            id: draftId,
+          const created = await createRemoteThread();
+          const createdThread: ChatThread = {
+            id: created.id,
             title: null,
             createdAt,
             isCoreMemory: false
           };
-          setThreads((prev) => [draftThread, ...prev]);
-          setMessagesForThread(draftId, []);
-          activeId = draftId;
-          streamThreadId = draftId;
-          activeThreadRef.current = draftId;
-          setThreadId(draftId);
+          setThreads((prev) => [createdThread, ...prev]);
+          setMessagesForThread(created.id, []);
+          activeId = created.id;
+          streamThreadId = created.id;
+          activeThreadRef.current = created.id;
+          setThreadId(created.id);
         }
 
         if (!activeId) return;
@@ -382,49 +438,7 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
         setMessagesForThread(activeId, baseMessages);
         streamThreadId = activeId;
 
-        let requestThreadId = activeId;
-        if (activeId.startsWith("draft-")) {
-          const created = await createRemoteThread();
-          const persistedId = created.id;
-          const draftId = activeId;
-          const draftMessages = messageCacheRef.current[draftId] ?? baseMessages;
-          const migratedMessages = draftMessages.map((message) => ({
-            ...message,
-            threadId: persistedId
-          }));
-
-          setMessageCache((prev) => {
-            const next = { ...prev };
-            delete next[draftId];
-            next[persistedId] = migratedMessages;
-            return next;
-          });
-          if (activeThreadRef.current === draftId) {
-            setMessages(migratedMessages);
-          }
-
-          setThreads((prev) => {
-            const merged = prev.map((thread) => {
-              if (thread.id !== draftId) return thread;
-              return {
-                ...thread,
-                id: persistedId
-              };
-            });
-            const targetTitle =
-              merged.find((thread) => thread.id === persistedId)?.title ??
-              deriveTitle(trimmed);
-            return merged.map((thread) =>
-              thread.id === persistedId ? { ...thread, title: thread.title ?? targetTitle } : thread
-            );
-          });
-
-          activeThreadRef.current = persistedId;
-          setThreadId(persistedId);
-          activeId = persistedId;
-          requestThreadId = persistedId;
-          streamThreadId = persistedId;
-        }
+        const requestThreadId = activeId;
 
         const targetThread = threads.find((thread) => thread.id === activeId);
         if (!targetThread?.title?.trim()) {
@@ -448,6 +462,24 @@ export function useChat(options?: { allowLocalFallback?: boolean }): UseChatResu
             | { error?: { message?: string } }
             | null;
           throw new Error(payload?.error?.message ?? "Assistant request failed.");
+        }
+        const traceMeta = parseAgentTraceMeta(response.headers);
+        const routeMeta = parseAgentRouteMeta(response.headers);
+        if (traceMeta || routeMeta) {
+          updateMessagesForThread(requestThreadId, (existing) =>
+            existing.map((message) =>
+              message.id === assistantId
+                ? {
+                    ...message,
+                    meta: {
+                      ...(message.meta ?? {}),
+                      ...(traceMeta ? { agentTrace: traceMeta } : {}),
+                      ...(routeMeta ? { agentRoute: routeMeta } : {})
+                    }
+                  }
+                : message
+            )
+          );
         }
 
         const reader = response.body.getReader();

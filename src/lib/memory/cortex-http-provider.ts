@@ -26,12 +26,14 @@ export class CortexHttpProvider implements MemoryProvider {
 
   constructor(options?: { authorization?: string | null }) {
     const configured = process.env.CORTEX_API_BASE_URL ?? "http://127.0.0.1:8000";
-    this.baseUrl = configured.replace(/\/+$/, "");
-    const agentEnabled = (process.env.CORTEX_AGENT_ENABLED ?? "false")
+    this.baseUrl = normalizeBaseUrl(configured, "http://127.0.0.1:8000");
+    const agentEnabled = (process.env.CORTEX_AGENT_ENABLED ?? "true")
       .trim()
       .toLowerCase() === "true";
     const configuredAgent = process.env.CORTEX_AGENT_BASE_URL ?? "http://127.0.0.1:8010";
-    this.agentBaseUrl = agentEnabled ? configuredAgent.replace(/\/+$/, "") : null;
+    this.agentBaseUrl = agentEnabled
+      ? normalizeBaseUrl(configuredAgent, "http://127.0.0.1:8010")
+      : null;
     this.apiKey = process.env.CORTEX_API_KEY ?? null;
     this.authorization = options?.authorization ?? null;
   }
@@ -58,15 +60,76 @@ export class CortexHttpProvider implements MemoryProvider {
   ): Promise<Response> {
     const headers = this.createHeaders();
     const useAgent = Boolean(this.agentBaseUrl);
-    const url = useAgent
+    const primaryUrl = useAgent
       ? `${this.agentBaseUrl}/v1/agent/threads/${encodeURIComponent(threadId)}/chat`
       : `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ text }),
-      signal
-    });
+    const fallbackUrl = `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`;
+    let response: Response;
+    let routeMode: "agent" | "agent_fallback" | "memory_direct" = useAgent
+      ? "agent"
+      : "memory_direct";
+    let routeWarning: string | null = null;
+
+    try {
+      response = await fetch(primaryUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ text }),
+        signal
+      });
+    } catch (error) {
+      if (!useAgent) {
+        throw new MemoryApiError(
+          `Memory API chat request failed for ${primaryUrl}: ${
+            error instanceof Error ? error.message : "fetch failed"
+          }`,
+          503
+        );
+      }
+      try {
+        response = await fetch(fallbackUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ text }),
+          signal
+        });
+        routeMode = "agent_fallback";
+        routeWarning = `CortexAgent was unreachable at ${primaryUrl}; used CortexLTM direct route instead.`;
+      } catch (fallbackError) {
+        throw new MemoryApiError(
+          `Chat routing failed for agent ${primaryUrl} and fallback ${fallbackUrl}: ${
+            fallbackError instanceof Error ? fallbackError.message : "fetch failed"
+          }`,
+          503
+        );
+      }
+    }
+
+    if (
+      useAgent &&
+      response &&
+      !response.ok &&
+      shouldFallbackToBaseFromAgent(response.status)
+    ) {
+      const agentStatus = response.status;
+      try {
+        response = await fetch(fallbackUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ text }),
+          signal
+        });
+        routeMode = "agent_fallback";
+        routeWarning = `CortexAgent returned ${agentStatus}; used CortexLTM direct route instead.`;
+      } catch (error) {
+        throw new MemoryApiError(
+          `Agent chat failed with status ${agentStatus} and fallback ${fallbackUrl} was unreachable: ${
+            error instanceof Error ? error.message : "fetch failed"
+          }`,
+          503
+        );
+      }
+    }
 
     if (!response.ok) {
       const textBody = await response.text();
@@ -89,13 +152,32 @@ export class CortexHttpProvider implements MemoryProvider {
       const payload = (await response.json().catch(() => ({}))) as JsonRecord;
       const assistantText =
         typeof payload.response === "string" ? payload.response : "";
+      const traceHeader = buildAgentTraceHeader(payload);
+      const outHeaders = new Headers({
+        "Content-Type": "text/plain; charset=utf-8"
+      });
+      outHeaders.set("x-cortex-route-mode", routeMode);
+      if (routeWarning) {
+        outHeaders.set("x-cortex-route-warning", sanitizeHeaderValue(routeWarning));
+      }
+      if (traceHeader) {
+        outHeaders.set("x-cortex-agent-trace", traceHeader);
+      }
       return new Response(assistantText, {
         status: 200,
-        headers: { "Content-Type": "text/plain; charset=utf-8" }
+        headers: outHeaders
       });
     }
 
-    return response;
+    const passthroughHeaders = new Headers(response.headers);
+    passthroughHeaders.set("x-cortex-route-mode", routeMode);
+    if (routeWarning) {
+      passthroughHeaders.set("x-cortex-route-warning", sanitizeHeaderValue(routeWarning));
+    }
+    return new Response(response.body, {
+      status: response.status,
+      headers: passthroughHeaders
+    });
   }
 
   async listThreads(userId: string, limit = 50): Promise<ThreadRecord[]> {
@@ -317,4 +399,62 @@ function readErrorMessage(payload: JsonRecord | null): string | null {
 function isJsonResponse(response: Response): boolean {
   const value = response.headers.get("Content-Type") ?? "";
   return value.toLowerCase().includes("application/json");
+}
+
+function shouldFallbackToBaseFromAgent(status: number): boolean {
+  return status === 404 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function buildAgentTraceHeader(payload: JsonRecord): string | null {
+  const decision = isRecord(payload.decision) ? payload.decision : null;
+  const action = typeof decision?.action === "string" ? decision.action.trim() : "";
+  if (!action) return null;
+  const reason = typeof decision?.reason === "string" ? decision.reason.trim() : "";
+  const confidenceRaw = decision?.confidence;
+  const confidence =
+    typeof confidenceRaw === "number" && Number.isFinite(confidenceRaw)
+      ? confidenceRaw
+      : null;
+  const capabilities = inferCapabilitiesFromPayload(payload, action);
+  const trace = {
+    version: 1,
+    source: "cortex-agent",
+    action,
+    ...(reason ? { reason } : {}),
+    ...(confidence !== null ? { confidence } : {}),
+    capabilities
+  };
+  return JSON.stringify(trace);
+}
+
+function inferCapabilitiesFromPayload(
+  payload: JsonRecord,
+  action: string
+): Array<{ id: string; type: "tool"; label: string }> {
+  const out: Array<{ id: string; type: "tool"; label: string }> = [];
+  if (action === "web_search") {
+    out.push({ id: "web_search", type: "tool", label: "Web Search" });
+  }
+  const sources = payload.sources;
+  if (Array.isArray(sources) && sources.length > 0 && out.length === 0) {
+    out.push({ id: "external_sources", type: "tool", label: "External Sources" });
+  }
+  return out;
+}
+
+function normalizeBaseUrl(raw: string, fallback: string): string {
+  const cleaned = raw.trim().replace(/^['"]|['"]$/g, "");
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return fallback;
+    }
+    return cleaned.replace(/\/+$/, "");
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim().slice(0, 240);
 }
