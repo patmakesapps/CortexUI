@@ -434,6 +434,8 @@ function inferCapabilitiesFromPayload(
   const out: Array<{ id: string; type: "tool"; label: string }> = [];
   if (action === "web_search") {
     out.push({ id: "web_search", type: "tool", label: "Web Search" });
+  } else if (action === "google_calendar") {
+    out.push({ id: "google_calendar", type: "tool", label: "Google Calendar" });
   }
   const sources = payload.sources;
   if (Array.isArray(sources) && sources.length > 0 && out.length === 0) {

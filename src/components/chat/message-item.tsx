@@ -159,6 +159,32 @@ function parseContent(content: string): ContentPart[] {
   return parts;
 }
 
+function normalizeGoogleCalendarContent(raw: string): string {
+  if (!raw) return raw;
+  let next = raw;
+  next = next.replace(
+    /https?:\/\/(?:www\.)?google\.com\/calendar\/event\?[^\s)]+/gi,
+    "https://calendar.google.com/"
+  );
+  next = next.replace(/Starts:\s*([0-9T:\-+.Z]+)/gi, (_match, isoValue: string) => {
+    const value = String(isoValue || "").trim();
+    if (!value) return "Starts: Time unavailable";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return `Starts: ${value}`;
+    }
+    const stamp = date.toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    });
+    return `Starts: ${stamp}`;
+  });
+  return next;
+}
+
 function toTitleCase(raw: string): string {
   return raw
     .replace(/[_-]+/g, " ")
@@ -208,17 +234,32 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
 
   const sourceRaw = metaRow.source;
   const source = typeof sourceRaw === "string" ? sourceRaw.trim().toLowerCase() : "";
-  if (source !== "cortexagent_web_search" && source !== "cortexagent") {
+  if (
+    source !== "cortexagent_web_search" &&
+    source !== "cortexagent_google_calendar" &&
+    source !== "cortexagent"
+  ) {
     return null;
   }
   const capabilities: AgentCapability[] = [];
   if (source === "cortexagent_web_search") {
     capabilities.push({ id: "web_search", type: "tool", label: "Web Search" });
+  } else if (source === "cortexagent_google_calendar") {
+    capabilities.push({
+      id: "google_calendar",
+      type: "tool",
+      label: "Google Calendar"
+    });
   }
   return {
     version: 1,
     source: "cortex-agent",
-    action: source === "cortexagent_web_search" ? "web_search" : "chat",
+    action:
+      source === "cortexagent_web_search"
+        ? "web_search"
+        : source === "cortexagent_google_calendar"
+          ? "google_calendar"
+          : "chat",
     capabilities
   };
 }
@@ -243,7 +284,11 @@ function readAgentRouteMeta(message: ChatMessage): AgentRouteMeta | null {
   }
 
   const source = typeof row.source === "string" ? row.source.trim().toLowerCase() : "";
-  if (source === "cortexagent_web_search" || source === "cortexagent") {
+  if (
+    source === "cortexagent_web_search" ||
+    source === "cortexagent_google_calendar" ||
+    source === "cortexagent"
+  ) {
     return { mode: "agent" };
   }
   return null;
@@ -252,7 +297,11 @@ function readAgentRouteMeta(message: ChatMessage): AgentRouteMeta | null {
 export function MessageItem({ message }: MessageItemProps) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const isUser = message.role === "user";
-  const parts = isUser ? [] : parseContent(message.content || " ");
+  const normalizedAssistantContent =
+    !isUser && readAgentTraceMeta(message)?.action === "google_calendar"
+      ? normalizeGoogleCalendarContent(message.content || " ")
+      : message.content || " ";
+  const parts = isUser ? [] : parseContent(normalizedAssistantContent);
   const agentTrace = isUser ? null : readAgentTraceMeta(message);
   const agentRoute = isUser ? null : readAgentRouteMeta(message);
   const isChatRouted = agentTrace?.action === "chat";

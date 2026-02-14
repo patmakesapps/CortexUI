@@ -15,6 +15,7 @@ type ChatSidebarProps = {
   onRenameThread: (threadId: string, title: string) => Promise<void>;
   onDeleteThread: (threadId: string) => Promise<void>;
   onPromoteThread: (threadId: string) => Promise<void>;
+  onOpenIntegrations: () => void;
 };
 
 type ToastState = {
@@ -44,7 +45,8 @@ export function ChatSidebar({
   onSelectThread,
   onRenameThread,
   onDeleteThread,
-  onPromoteThread
+  onPromoteThread,
+  onOpenIntegrations
 }: ChatSidebarProps) {
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [originalTitle, setOriginalTitle] = useState("");
@@ -325,6 +327,22 @@ export function ChatSidebar({
         </div>
 
         <div className="border-t border-slate-700/60 p-2">
+          {!isCollapsed ? (
+            <div className="mb-2 rounded-lg border border-slate-700/80 bg-slate-800/40 p-2">
+              <div className="mb-2">
+                <span className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
+                  Settings
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenIntegrations}
+                className="inline-flex h-8 w-full items-center justify-center rounded-md border border-slate-600/80 bg-slate-800/75 px-2 text-xs text-slate-100 transition hover:bg-slate-700/80 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Connect Apps & Services
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={onToggleCollapsed}

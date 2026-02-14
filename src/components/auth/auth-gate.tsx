@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChatShell } from "@/components/chat/chat-shell";
+import { AppsShell } from "@/components/apps/apps-shell";
 import { AuthPanel } from "@/components/auth/auth-panel";
 import { BrainLoader } from "@/components/ui/brain-loader";
 
@@ -14,9 +15,10 @@ type SessionState = {
 
 type Props = {
   requireAuth: boolean;
+  view?: "chat" | "apps";
 };
 
-export function AuthGate({ requireAuth }: Props) {
+export function AuthGate({ requireAuth, view = "chat" }: Props) {
   const [session, setSession] = useState<SessionState>({
     loading: requireAuth,
     authenticated: !requireAuth,
@@ -121,7 +123,7 @@ export function AuthGate({ requireAuth }: Props) {
         </div>
       </div>
       <div className="h-full pt-[78px]">
-        <ChatShell />
+        {view === "apps" ? <AppsShell /> : <ChatShell />}
       </div>
     </div>
   );

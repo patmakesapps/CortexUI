@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Composer } from "@/components/chat/composer";
 import { MessageList } from "@/components/chat/message-list";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -8,6 +9,7 @@ import { BrainLoader } from "@/components/ui/brain-loader";
 import { useChat } from "@/hooks/use-chat";
 
 export function ChatShell() {
+  const router = useRouter();
   const {
     threadId,
     threads,
@@ -79,6 +81,7 @@ export function ChatShell() {
           onRenameThread={renameThread}
           onDeleteThread={deleteThread}
           onPromoteThread={promoteThread}
+          onOpenIntegrations={() => router.push("/apps")}
         />
       </aside>
 

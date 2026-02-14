@@ -25,7 +25,7 @@ function clearOauthCookies(response: NextResponse): void {
 }
 
 function withResultRedirect(req: NextRequest, key: string, value: string): NextResponse {
-  const target = new URL("/", resolveAppOrigin(req));
+  const target = new URL("/apps", resolveAppOrigin(req));
   target.searchParams.set(key, value);
   const out = NextResponse.redirect(target);
   clearOauthCookies(out);
