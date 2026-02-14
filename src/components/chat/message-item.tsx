@@ -32,6 +32,23 @@ type AgentRouteMeta = {
   warning?: string;
 };
 
+type ToolCardField = {
+  label: string;
+  value: string;
+};
+
+type ToolCard = {
+  title: string;
+  fields: ToolCardField[];
+  link?: string;
+};
+
+type ToolCardGroup = {
+  heading: string;
+  cards: ToolCard[];
+  footer?: string;
+};
+
 const URL_PATTERN = /(https?:\/\/[^\s<>"`]+)/g;
 
 function splitTrailingPunctuation(url: string): { href: string; trailing: string } {
@@ -157,6 +174,117 @@ function parseContent(content: string): ContentPart[] {
   }
 
   return parts;
+}
+
+function parseIndexedToolCards(content: string): ToolCardGroup | null {
+  const lines = content.split(/\r?\n/);
+  if (lines.length < 2) return null;
+  const heading = lines[0].trim();
+  if (!heading.endsWith(":")) return null;
+
+  const cards: ToolCard[] = [];
+  let current: ToolCard | null = null;
+  const pushCurrent = () => {
+    if (!current) return;
+    cards.push(current);
+    current = null;
+  };
+
+  for (const rawLine of lines.slice(1)) {
+    const numbered = rawLine.match(/^\s*\d+\.\s+(.+)$/);
+    if (numbered) {
+      pushCurrent();
+      current = { title: numbered[1].trim(), fields: [] };
+      continue;
+    }
+    if (!current) {
+      continue;
+    }
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^link:\s*/i.test(line)) {
+      current.link = line.replace(/^link:\s*/i, "").trim();
+      continue;
+    }
+    const kv = line.match(/^([^:]{2,30}):\s*(.+)$/);
+    if (kv) {
+      const label = kv[1].trim();
+      if (label.toLowerCase() === "draft id") continue;
+      current.fields.push({ label, value: kv[2].trim() });
+      continue;
+    }
+    current.fields.push({ label: "Detail", value: line });
+  }
+  pushCurrent();
+  if (cards.length === 0) return null;
+  return { heading: heading.replace(/:\s*$/, ""), cards };
+}
+
+function parseGmailDraftConfirmationCard(content: string): ToolCardGroup | null {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0) return null;
+  if (lines[0].trim().toLowerCase() !== "i am ready to send this draft:") {
+    return null;
+  }
+  const fields: ToolCardField[] = [];
+  let footer = "";
+  for (const rawLine of lines.slice(1)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^reply with /i.test(line)) {
+      footer = line;
+      continue;
+    }
+    const bullet = line.match(/^\-\s*([^:]{2,30}):\s*(.+)$/);
+    if (!bullet) continue;
+    const label = bullet[1].trim();
+    if (label.toLowerCase() === "draft id") continue;
+    fields.push({ label, value: bullet[2].trim() });
+  }
+  if (fields.length === 0) return null;
+  return {
+    heading: "Email Draft Ready",
+    cards: [{ title: "Ready to send", fields }],
+    ...(footer ? { footer } : {})
+  };
+}
+
+function parseCalendarDraftCard(content: string): ToolCardGroup | null {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0) return null;
+  if (lines[0].trim().toLowerCase() !== "i have this draft event:") {
+    return null;
+  }
+  const fields: ToolCardField[] = [];
+  let footer = "";
+  for (const rawLine of lines.slice(1)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^should i add this to google calendar\?/i.test(line)) {
+      footer = line;
+      continue;
+    }
+    const bullet = line.match(/^\-\s*([^:]{2,30}):\s*(.+)$/);
+    if (!bullet) continue;
+    fields.push({ label: bullet[1].trim(), value: bullet[2].trim() });
+  }
+  if (fields.length === 0) return null;
+  return {
+    heading: "Calendar Draft",
+    cards: [{ title: "Pending event", fields }],
+    ...(footer ? { footer } : {})
+  };
+}
+
+function parseToolCardGroup(action: string | undefined, content: string): ToolCardGroup | null {
+  if (!action) return null;
+  if (action === "google_gmail") {
+    return parseGmailDraftConfirmationCard(content) ?? parseIndexedToolCards(content);
+  }
+  if (action === "google_calendar") {
+    return parseCalendarDraftCard(content) ?? parseIndexedToolCards(content);
+  }
+  return null;
 }
 
 function normalizeGoogleCalendarContent(raw: string): string {
@@ -312,6 +440,11 @@ export function MessageItem({ message }: MessageItemProps) {
           capability.label.trim().toLowerCase() !== normalizedAction.trim().toLowerCase()
       )
     : [];
+  const isWebSearchRouted = agentTrace?.action === "web_search";
+  const toolCardGroup =
+    !isUser && agentTrace
+      ? parseToolCardGroup(agentTrace.action, normalizedAssistantContent)
+      : null;
 
   const handleCopy = async (value: string, partIndex: number) => {
     try {
@@ -336,7 +469,7 @@ export function MessageItem({ message }: MessageItemProps) {
           <p className="font-semibold tracking-wide text-amber-50">Agent fallback</p>
           <p>{agentRoute.warning ?? "Agentic tools were unavailable. This reply used direct memory mode."}</p>
         </div>
-      ) : agentTrace && !isChatRouted ? (
+      ) : agentTrace && !isChatRouted && isWebSearchRouted ? (
         <div className="mb-3 rounded-2xl border border-cyan-300/35 bg-gradient-to-r from-cyan-500/22 via-cyan-400/10 to-transparent px-3 py-2 text-[12px] leading-5 text-cyan-100 shadow-[0_14px_30px_rgb(8_47_73/0.25)] backdrop-blur-sm">
           <p className="font-semibold tracking-wide text-cyan-50">Agentic behavior active</p>
           <p>
@@ -365,39 +498,85 @@ export function MessageItem({ message }: MessageItemProps) {
         </div>
       ) : null}
       <div className="space-y-4">
-        {parts.map((part, index) => {
-          if (part.type === "text") {
-            if (part.value.trim().length === 0) {
-              return null;
+        {toolCardGroup ? (
+          <div className="space-y-3">
+            <p className="text-[15px] font-semibold uppercase tracking-wide text-cyan-100/90">
+              {toolCardGroup.heading}
+            </p>
+            {toolCardGroup.cards.map((card, cardIndex) => (
+              <article
+                key={`${message.id}-tool-card-${cardIndex}`}
+                className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-slate-800/85 via-slate-800/60 to-cyan-950/30 p-4 shadow-[0_16px_32px_rgb(8_47_73/0.22)]"
+              >
+                <h4 className="mb-3 text-[18px] font-semibold leading-7 text-slate-100">
+                  {card.title}
+                </h4>
+                <div className="space-y-2">
+                  {card.fields.map((field, fieldIndex) => (
+                    <div
+                      key={`${message.id}-tool-card-${cardIndex}-field-${fieldIndex}`}
+                      className="rounded-xl border border-slate-500/35 bg-slate-900/35 px-3 py-2"
+                    >
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-200/85">
+                        {field.label}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-[16px] leading-7 text-slate-100">
+                        {renderTextWithLinks(field.value)}
+                      </p>
+                    </div>
+                  ))}
+                  {card.link ? (
+                    <a
+                      href={card.link}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex rounded-lg border border-cyan-300/35 bg-cyan-500/10 px-3 py-1.5 text-[13px] font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+                    >
+                      Open in Google
+                    </a>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+            {toolCardGroup.footer ? (
+              <p className="text-[14px] leading-6 text-slate-300">{toolCardGroup.footer}</p>
+            ) : null}
+          </div>
+        ) : (
+          parts.map((part, index) => {
+            if (part.type === "text") {
+              if (part.value.trim().length === 0) {
+                return null;
+              }
+              return (
+                <p key={`${message.id}-text-${index}`} className="whitespace-pre-wrap">
+                  {renderTextWithLinks(part.value)}
+                </p>
+              );
             }
-            return (
-              <p key={`${message.id}-text-${index}`} className="whitespace-pre-wrap">
-                {renderTextWithLinks(part.value)}
-              </p>
-            );
-          }
 
-          return (
-            <div
-              key={`${message.id}-code-${index}`}
-              className="overflow-hidden rounded-2xl border border-slate-500/50 bg-slate-900/80"
-            >
-              <div className="flex items-center justify-between border-b border-slate-500/45 bg-slate-800/80 px-3 py-1.5 text-xs tracking-wide text-slate-300">
-                <span className="font-semibold uppercase">{part.language}</span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy(part.value, index)}
-                  className="rounded-md border border-slate-500/50 px-2 py-0.5 text-[11px] font-semibold text-slate-100 transition hover:bg-slate-700/60"
-                >
-                  {copiedIndex === index ? "Copied" : "Copy"}
-                </button>
+            return (
+              <div
+                key={`${message.id}-code-${index}`}
+                className="overflow-hidden rounded-2xl border border-slate-500/50 bg-slate-900/80"
+              >
+                <div className="flex items-center justify-between border-b border-slate-500/45 bg-slate-800/80 px-3 py-1.5 text-xs tracking-wide text-slate-300">
+                  <span className="font-semibold uppercase">{part.language}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(part.value, index)}
+                    className="rounded-md border border-slate-500/50 px-2 py-0.5 text-[11px] font-semibold text-slate-100 transition hover:bg-slate-700/60"
+                  >
+                    {copiedIndex === index ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <pre className="overflow-x-auto px-4 py-3 text-[14px] leading-6 text-slate-100 md:text-[15px]">
+                  <code>{part.value}</code>
+                </pre>
               </div>
-              <pre className="overflow-x-auto px-4 py-3 text-[14px] leading-6 text-slate-100 md:text-[15px]">
-                <code>{part.value}</code>
-              </pre>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );

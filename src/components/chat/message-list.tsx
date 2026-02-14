@@ -78,7 +78,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
               label: "Agentic workflow active.",
               tone: "active" as const
             }
-          : null;
+        : null;
 
   return (
     <div className="chat-scroll chat-fade-scroll flex-1 overflow-y-auto px-1 pb-6 pt-4 md:px-2 md:pb-8">
