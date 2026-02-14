@@ -14,6 +14,7 @@ type UseChatResult = {
   threads: ChatThread[];
   messages: ChatMessage[];
   isBootstrapping: boolean;
+  isThreadTransitioning: boolean;
   isStreaming: boolean;
   error: string | null;
   clearError: () => void;
@@ -115,6 +116,7 @@ export function useChat(): UseChatResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageCache, setMessageCache] = useState<Record<string, ChatMessage[]>>({});
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isThreadTransitioning, setIsThreadTransitioning] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -220,7 +222,13 @@ export function useChat(): UseChatResult {
       setError(null);
       activeThreadRef.current = nextThreadId;
       setThreadId(nextThreadId);
-      await loadThreadMessages(nextThreadId);
+      setMessages([]);
+      setIsThreadTransitioning(true);
+      try {
+        await loadThreadMessages(nextThreadId);
+      } finally {
+        setIsThreadTransitioning(false);
+      }
     },
     [loadThreadMessages, threadId]
   );
@@ -230,6 +238,7 @@ export function useChat(): UseChatResult {
     activeThreadRef.current = null;
     setThreadId(null);
     setMessages([]);
+    setIsThreadTransitioning(false);
   }, []);
 
   const clearError = useCallback(() => {
@@ -395,6 +404,7 @@ export function useChat(): UseChatResult {
 
       try {
         if (!activeId) {
+          setIsThreadTransitioning(true);
           const createdAt = new Date().toISOString();
           const created = await createRemoteThread();
           const createdThread: ChatThread = {
@@ -409,6 +419,7 @@ export function useChat(): UseChatResult {
           streamThreadId = created.id;
           activeThreadRef.current = created.id;
           setThreadId(created.id);
+          setIsThreadTransitioning(false);
         }
 
         if (!activeId) return;
@@ -525,6 +536,7 @@ export function useChat(): UseChatResult {
             )
           );
         }
+        setIsThreadTransitioning(false);
         setIsStreaming(false);
       }
     },
@@ -537,6 +549,7 @@ export function useChat(): UseChatResult {
       threads,
       messages,
       isBootstrapping,
+      isThreadTransitioning,
       isStreaming,
       error,
       clearError,
@@ -553,6 +566,7 @@ export function useChat(): UseChatResult {
       deleteThread,
       error,
       isBootstrapping,
+      isThreadTransitioning,
       isStreaming,
       messages,
       promoteThread,

@@ -162,7 +162,10 @@ export function AppsShell() {
           <div>
             <h2 className="text-lg font-medium text-slate-100">Google Calendar</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Read upcoming events from your primary calendar.
+              Read upcoming events and create events in your primary calendar.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Connection is account-level and remains linked after sign out until you disconnect it.
             </p>
           </div>
           <span

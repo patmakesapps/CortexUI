@@ -20,6 +20,12 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
   - supports fenced blocks that start after list prefixes
   - tolerates trailing text on closing fences
   - preserves code rendering when a model omits a closing fence
+- Updated Google Calendar integration UX:
+  - connection now requests `calendar.events` scope for read + write
+  - app copy now reflects read/create support, not read-only support
+- Improved chat thread switching UX:
+  - added transition/loading states when changing threads
+  - composer disables during transition to prevent cross-thread sends
 
 ## Status
 
@@ -80,6 +86,7 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `POST /api/auth/oauth/start` start OAuth login (Google/GitHub)
 - `POST /api/auth/sign-out` clear local auth cookies
 - `POST /api/integrations/google/start` generate Google OAuth URL + PKCE/state cookies
+  - Requests `openid email profile https://www.googleapis.com/auth/calendar.events`
 - `GET /api/integrations/google/callback` OAuth callback relay to CortexAgent connect endpoint
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread
