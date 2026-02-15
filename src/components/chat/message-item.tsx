@@ -50,6 +50,12 @@ type ToolCardGroup = {
 };
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"`]+)/g;
+const GMAIL_HIDDEN_FIELD_LABELS = new Set([
+  "draft id",
+  "message id",
+  "thread id",
+  "id"
+]);
 
 function splitTrailingPunctuation(url: string): { href: string; trailing: string } {
   const match = url.match(/([)\].,!?:;]+)$/);
@@ -279,12 +285,37 @@ function parseCalendarDraftCard(content: string): ToolCardGroup | null {
 function parseToolCardGroup(action: string | undefined, content: string): ToolCardGroup | null {
   if (!action) return null;
   if (action === "google_gmail") {
-    return parseGmailDraftConfirmationCard(content) ?? parseIndexedToolCards(content);
+    const parsed = parseGmailDraftConfirmationCard(content) ?? parseIndexedToolCards(content);
+    return parsed ? sanitizeGmailToolCardGroup(parsed) : null;
   }
   if (action === "google_calendar") {
     return parseCalendarDraftCard(content) ?? parseIndexedToolCards(content);
   }
   return null;
+}
+
+function sanitizeGmailToolCardGroup(group: ToolCardGroup): ToolCardGroup {
+  return {
+    ...group,
+    cards: group.cards.map((card) => ({
+      ...card,
+      title: normalizeGmailCardTitle(card.title),
+      fields: card.fields.filter(
+        (field) => !GMAIL_HIDDEN_FIELD_LABELS.has(field.label.trim().toLowerCase())
+      )
+    }))
+  };
+}
+
+function normalizeGmailCardTitle(title: string): string {
+  const cleaned = title.trim();
+  if (/^\[sent\]/i.test(cleaned)) {
+    return "Email sent";
+  }
+  if (/^\[drafted\]\s*new\s+email/i.test(cleaned)) {
+    return "Email draft created";
+  }
+  return cleaned;
 }
 
 function normalizeGoogleCalendarContent(raw: string): string {
