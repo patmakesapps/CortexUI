@@ -53,6 +53,12 @@ type AgentTraceMeta = {
   reason?: string;
   confidence?: number;
   capabilities: AgentCapability[];
+  steps?: Array<{
+    action: string;
+    toolName: string;
+    success: boolean;
+    reason: string;
+  }>;
 };
 
 function deriveTitle(text: string): string {
@@ -77,6 +83,7 @@ function parseAgentTraceMeta(headers: Headers): AgentTraceMeta | null {
     const capabilitiesRaw = Array.isArray(parsed.capabilities)
       ? parsed.capabilities
       : [];
+    const stepsRaw = Array.isArray(parsed.steps) ? parsed.steps : [];
     const capabilities = capabilitiesRaw
       .map((item) => {
         if (!item || typeof item !== "object") return null;
@@ -88,6 +95,23 @@ function parseAgentTraceMeta(headers: Headers): AgentTraceMeta | null {
         return { id, type, label } satisfies AgentCapability;
       })
       .filter((item): item is AgentCapability => item !== null);
+    const steps = stepsRaw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        const action = typeof row.action === "string" ? row.action.trim() : "";
+        const toolName = typeof row.toolName === "string" ? row.toolName.trim() : "";
+        const success = typeof row.success === "boolean" ? row.success : null;
+        const reason = typeof row.reason === "string" ? row.reason.trim() : "";
+        if (!action || !toolName || success === null) return null;
+        return { action, toolName, success, reason };
+      })
+      .filter(
+        (
+          item
+        ): item is { action: string; toolName: string; success: boolean; reason: string } =>
+          item !== null
+      );
 
     return {
       version,
@@ -95,7 +119,8 @@ function parseAgentTraceMeta(headers: Headers): AgentTraceMeta | null {
       action,
       ...(reason ? { reason } : {}),
       ...(typeof confidence === "number" ? { confidence } : {}),
-      capabilities
+      capabilities,
+      ...(steps.length > 0 ? { steps } : {})
     };
   } catch {
     return null;

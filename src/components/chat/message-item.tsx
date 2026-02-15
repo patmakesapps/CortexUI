@@ -26,6 +26,12 @@ type AgentTraceMeta = {
   reason?: string;
   confidence?: number;
   capabilities: AgentCapability[];
+  steps?: Array<{
+    action: string;
+    toolName: string;
+    success: boolean;
+    reason: string;
+  }>;
 };
 
 type AgentRouteMeta = {
@@ -330,11 +336,22 @@ function parseIndexedToolCards(content: string): ToolCardGroup | null {
       current.link = line.replace(/^link:\s*/i, "").trim();
       continue;
     }
+    const lastField = current.fields.length > 0 ? current.fields[current.fields.length - 1] : null;
+    const lastLabel = lastField?.label.trim().toLowerCase() ?? "";
+    if (lastField && (lastLabel === "body" || lastLabel === "preview" || lastLabel === "message")) {
+      lastField.value = `${lastField.value}\n${line}`;
+      continue;
+    }
     const kv = line.match(/^([^:]{2,30}):\s*(.+)$/);
     if (kv) {
       const label = kv[1].trim();
       if (label.toLowerCase() === "draft id") continue;
       current.fields.push({ label, value: kv[2].trim() });
+      continue;
+    }
+    if (current.fields.length > 0) {
+      const lastField = current.fields[current.fields.length - 1];
+      lastField.value = `${lastField.value}\n${line}`;
       continue;
     }
     current.fields.push({ label: "Detail", value: line });
@@ -532,6 +549,25 @@ function toTitleCase(raw: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function isExpandableToolCardFieldValue(value: string): boolean {
+  if (!value) return false;
+  const lines = value.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  return value.length > 280 || lines.length > 4;
+}
+
+function getCollapsedToolCardFieldValue(value: string): string {
+  const lines = value.split(/\r?\n/);
+  const trimmedLines = lines.slice(0, 4);
+  const collapsed = trimmedLines.join("\n").trimEnd();
+  if (value.length > 280) {
+    return `${collapsed.slice(0, 280).trimEnd()}...`;
+  }
+  if (lines.length > 4) {
+    return `${collapsed}\n...`;
+  }
+  return collapsed;
+}
+
 function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
   const meta = message.meta;
   const metaRow =
@@ -548,6 +584,7 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
     const reason = typeof row.reason === "string" ? row.reason : undefined;
     const confidence = typeof row.confidence === "number" ? row.confidence : undefined;
     const capabilitiesRaw = Array.isArray(row.capabilities) ? row.capabilities : [];
+    const stepsRaw = Array.isArray(row.steps) ? row.steps : [];
     const capabilities = capabilitiesRaw
       .map((item) => {
         if (!item || typeof item !== "object") return null;
@@ -560,6 +597,31 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
         return { id, type, label } satisfies AgentCapability;
       })
       .filter((item): item is AgentCapability => item !== null);
+    const steps = stepsRaw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const step = item as Record<string, unknown>;
+        const actionValue = typeof step.action === "string" ? step.action.trim() : "";
+        const toolNameValue =
+          typeof step.toolName === "string" ? step.toolName.trim() : "";
+        const successValue =
+          typeof step.success === "boolean" ? step.success : null;
+        const reasonValue =
+          typeof step.reason === "string" ? step.reason.trim() : "";
+        if (!actionValue || !toolNameValue || successValue === null) return null;
+        return {
+          action: actionValue,
+          toolName: toolNameValue,
+          success: successValue,
+          reason: reasonValue
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is { action: string; toolName: string; success: boolean; reason: string } =>
+          item !== null
+      );
 
     return {
       version,
@@ -567,7 +629,8 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
       action,
       ...(reason ? { reason } : {}),
       ...(typeof confidence === "number" ? { confidence } : {}),
-      capabilities
+      capabilities,
+      ...(steps.length > 0 ? { steps } : {})
     };
   }
 
@@ -658,6 +721,7 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
   const [pendingReaction, setPendingReaction] = useState<MessageReaction | null>(null);
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [burstReaction, setBurstReaction] = useState<MessageReaction | null>(null);
+  const [expandedToolCards, setExpandedToolCards] = useState<Record<string, boolean>>({});
   const isUser = message.role === "user";
   const activeReaction =
     message.meta && typeof message.meta === "object"
@@ -713,6 +777,13 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
     }
   };
 
+  const toggleToolCardExpanded = (cardKey: string) => {
+    setExpandedToolCards((prev) => ({
+      ...prev,
+      [cardKey]: !prev[cardKey]
+    }));
+  };
+
   const content = isUser ? (
     <div className="ui-user-bubble ml-auto max-w-[85%] rounded-3xl px-4 py-3 text-[17px] leading-8 shadow-[0_12px_30px_rgb(2_6_23/0.25)] md:max-w-[70%] md:text-[18px]">
       <p className="whitespace-pre-wrap">{message.content || " "}</p>
@@ -720,8 +791,8 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
   ) : (
     <div className="mr-auto max-w-[90%] px-3 py-2 text-[17px] leading-8 text-[rgb(var(--foreground)/1)] md:max-w-[78%] md:text-[18px]">
       {agentRoute?.mode === "agent_fallback" ? (
-        <div className="mb-3 rounded-2xl border border-amber-300/35 bg-gradient-to-r from-amber-500/18 via-amber-400/10 to-transparent px-3 py-2 text-[12px] leading-5 text-amber-100 shadow-[0_14px_26px_rgb(120_53_15/0.25)] backdrop-blur-sm">
-          <p className="font-semibold tracking-wide text-amber-50">Agent fallback</p>
+        <div className="mb-3 rounded-2xl border border-amber-400/70 bg-amber-100/90 px-3 py-2 text-[12px] leading-5 text-amber-900 shadow-[0_10px_24px_rgb(120_53_15/0.18)]">
+          <p className="font-semibold tracking-wide text-amber-900">Agent fallback</p>
           <p>{agentRoute.warning ?? "Agentic tools were unavailable. This reply used direct memory mode."}</p>
         </div>
       ) : agentTrace && !isChatRouted && isWebSearchRouted ? (
@@ -752,6 +823,22 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
           ))}
         </div>
       ) : null}
+      {agentTrace?.action === "orchestration" && agentTrace.steps && agentTrace.steps.length > 0 ? (
+        <div className="mb-3 rounded-2xl border border-[rgb(var(--border)/0.65)] bg-[rgb(var(--panel)/0.45)] px-3 py-2">
+          <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
+            Pipeline Steps
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {agentTrace.steps.map((step, index) => (
+              <p key={`${message.id}-step-${index}`} className="text-[13px] leading-6">
+                <span className="font-semibold">{index + 1}. {toTitleCase(step.action)}</span>
+                {" - "}
+                {step.success ? "Completed" : "Failed"}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="space-y-4">
         {toolCardGroup ? (
           <div className="space-y-3">
@@ -772,19 +859,37 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
                   </h4>
                 </div>
                 <div className="space-y-2">
-                  {card.fields.map((field, fieldIndex) => (
-                    <div
-                      key={`${message.id}-tool-card-${cardIndex}-field-${fieldIndex}`}
-                      className="ui-panel ui-panel-strong rounded-xl px-3 py-2"
-                    >
-                      <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
-                        {field.label}
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-[16px] leading-7 text-[rgb(var(--foreground)/0.96)]">
-                        {renderTextWithLinks(field.value)}
-                      </p>
-                    </div>
-                  ))}
+                  {card.fields.map((field, fieldIndex) => {
+                    const cardFieldKey = `${message.id}-tool-card-${cardIndex}-field-${fieldIndex}`;
+                    const expandable = isExpandableToolCardFieldValue(field.value);
+                    const expanded = Boolean(expandedToolCards[cardFieldKey]);
+                    const visibleValue =
+                      expandable && !expanded
+                        ? getCollapsedToolCardFieldValue(field.value)
+                        : field.value;
+                    return (
+                      <div
+                        key={cardFieldKey}
+                        className="ui-panel ui-panel-strong rounded-xl px-3 py-2"
+                      >
+                        <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
+                          {field.label}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-[16px] leading-7 text-[rgb(var(--foreground)/0.96)]">
+                          {renderTextWithLinks(visibleValue)}
+                        </p>
+                        {expandable ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleToolCardExpanded(cardFieldKey)}
+                            className="ui-button mt-2 inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold"
+                          >
+                            {expanded ? "Show less" : "Read full body"}
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                   {card.link ? (
                     <a
                       href={card.link}

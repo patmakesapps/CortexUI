@@ -53,7 +53,18 @@ function readAgentRoute(
 function inferActionFromUserText(text: string): string | null {
   const lowered = text.trim().toLowerCase();
   if (!lowered) return null;
-  if (/\b(gmail|email|inbox|draft|send email|send an email)\b/.test(lowered)) {
+  const intents = [
+    /\b(gmail|email|emails|inbox|draft|send email|send an email)\b/.test(lowered),
+    /\b(calendar|meeting|schedule|appointment|availability|event)\b/.test(lowered),
+    /\b(drive|folder|file|doc|document|spreadsheet|slides)\b/.test(lowered),
+    /\b(search|look up|lookup|latest|news|web|online|find on the internet|google it)\b/.test(
+      lowered
+    )
+  ].filter(Boolean).length;
+  if (intents >= 2) {
+    return "orchestration";
+  }
+  if (/\b(gmail|email|emails|inbox|draft|send email|send an email)\b/.test(lowered)) {
     return "google_gmail";
   }
   if (/\b(calendar|meeting|schedule|appointment|availability|event)\b/.test(lowered)) {
@@ -235,6 +246,17 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
         tone: "active"
       };
     }
+    if (effectiveAction === "orchestration") {
+      return {
+        label:
+          phase === 0
+            ? "Planning orchestration steps (Gmail, Drive, Calendar, Web)..."
+            : phase === 1
+              ? "Executing tool steps and collecting results..."
+              : "Synthesizing final response from step outputs...",
+        tone: "active"
+      };
+    }
     if (route?.mode === "agent") {
       return {
         label: hasAssistantContent ? "Preparing response..." : "Understanding your request and gathering context...",
@@ -255,7 +277,11 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
           <MessageItem
             key={message.id}
             message={message}
-            onReact={message.role === "assistant" ? onReactToMessage : undefined}
+            onReact={
+              message.role === "assistant" && !isStreaming
+                ? onReactToMessage
+                : undefined
+            }
           />
         ))}
         {showTypingIndicator ? (
