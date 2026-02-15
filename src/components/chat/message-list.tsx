@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/hooks/use-chat";
 import { MessageItem } from "@/components/chat/message-item";
 import { TypingIndicator } from "@/components/chat/typing-indicator";
@@ -8,6 +8,12 @@ import { TypingIndicator } from "@/components/chat/typing-indicator";
 type MessageListProps = {
   messages: ChatMessage[];
   isStreaming: boolean;
+};
+
+type ActivityTone = "active" | "warning";
+type ActivityState = {
+  label: string;
+  tone: ActivityTone;
 };
 
 function readAgentTraceAction(message: ChatMessage | null): string | null {
@@ -39,18 +45,83 @@ function readAgentRoute(
   };
 }
 
+function inferActionFromUserText(text: string): string | null {
+  const lowered = text.trim().toLowerCase();
+  if (!lowered) return null;
+  if (/\b(gmail|email|inbox|draft|send email|send an email)\b/.test(lowered)) {
+    return "google_gmail";
+  }
+  if (/\b(calendar|meeting|schedule|appointment|availability|event)\b/.test(lowered)) {
+    return "google_calendar";
+  }
+  if (/\b(drive|folder|file|doc|document|spreadsheet|slides)\b/.test(lowered)) {
+    return "google_drive";
+  }
+  if (
+    /\b(search|look up|lookup|latest|news|web|online|find on the internet|google it)\b/.test(
+      lowered
+    )
+  ) {
+    return "web_search";
+  }
+  return null;
+}
+
+function inferCalendarModeFromUserText(text: string): "create_or_update" | "check" {
+  const lowered = text.trim().toLowerCase();
+  if (!lowered) return "check";
+  if (
+    /\b(add|create|schedule|book|set up|put|move|reschedule|update|change)\b/.test(lowered) &&
+    /\b(calendar|meeting|event|appointment)\b/.test(lowered)
+  ) {
+    return "create_or_update";
+  }
+  if (/\b(add event|create event|schedule meeting|reschedule)\b/.test(lowered)) {
+    return "create_or_update";
+  }
+  return "check";
+}
+
+function inferGmailModeFromUserText(text: string): "send_or_draft" | "check" {
+  const lowered = text.trim().toLowerCase();
+  if (!lowered) return "check";
+  if (
+    /\b(send|email|mail|draft|compose|reply|respond|forward|message)\b/.test(lowered) &&
+    /\b(to|about|subject|cc|bcc|follow up|follow-up)\b/.test(lowered)
+  ) {
+    return "send_or_draft";
+  }
+  if (/\b(send an email|write an email|draft an email|compose email|reply to)\b/.test(lowered)) {
+    return "send_or_draft";
+  }
+  return "check";
+}
+
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const streamStartedAtRef = useRef<number | null>(null);
+  const [streamTick, setStreamTick] = useState(0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isStreaming]);
 
-  const showTypingIndicator =
-    isStreaming &&
-    (messages.length === 0 ||
-      messages[messages.length - 1].role === "user" ||
-      messages[messages.length - 1].content.length === 0);
+  useEffect(() => {
+    if (!isStreaming) {
+      streamStartedAtRef.current = null;
+      setStreamTick(0);
+      return;
+    }
+    if (streamStartedAtRef.current === null) {
+      streamStartedAtRef.current = Date.now();
+    }
+    const timer = window.setInterval(() => {
+      setStreamTick((prev) => prev + 1);
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [isStreaming]);
+
+  const showTypingIndicator = isStreaming;
 
   const activeAssistant =
     [...messages]
@@ -60,25 +131,107 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
     null;
   const route = readAgentRoute(activeAssistant);
   const traceAction = readAgentTraceAction(activeAssistant);
-  const activity =
-    route?.mode === "agent_fallback"
-      ? {
+  const latestUserText =
+    [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  const inferredAction = inferActionFromUserText(latestUserText);
+  const calendarMode = inferCalendarModeFromUserText(latestUserText);
+  const gmailMode = inferGmailModeFromUserText(latestUserText);
+  const effectiveAction = traceAction ?? inferredAction;
+  const elapsedMs =
+    isStreaming && streamStartedAtRef.current
+      ? Math.max(0, Date.now() + streamTick * 0 - streamStartedAtRef.current)
+      : 0;
+  const hasAssistantContent = Boolean(activeAssistant?.content?.trim());
+
+  const buildActivity = (): ActivityState | null => {
+    if (route?.mode === "agent_fallback") {
+      return {
+        label:
+          route.warning ??
+          "Agent routing is unavailable for this turn. Continuing in direct memory mode.",
+        tone: "warning"
+      };
+    }
+
+    const phase = elapsedMs < 1800 ? 0 : elapsedMs < 4200 ? 1 : 2;
+    if (effectiveAction === "web_search") {
+      return {
+        label:
+          phase === 0
+            ? "Opening live web search..."
+            : phase === 1
+              ? "Checking top sources and extracting key facts..."
+              : "Preparing a grounded response...",
+        tone: "active"
+      };
+    }
+    if (effectiveAction === "google_gmail") {
+      if (gmailMode === "send_or_draft") {
+        return {
           label:
-            route.warning ??
-            "Agentic routing is unavailable for this turn. Continuing in direct memory mode.",
-          tone: "warning" as const
-        }
-      : traceAction === "web_search"
-        ? {
-            label: "Agentic workflow active: searching live web sources.",
-            tone: "active" as const
-          }
-        : route?.mode === "agent"
-          ? {
-              label: "Agentic workflow active.",
-              tone: "active" as const
-            }
-        : null;
+            phase === 0
+              ? "Opening Gmail..."
+              : phase === 1
+                ? "Drafting your email..."
+                : "Preparing send confirmation...",
+          tone: "active"
+        };
+      }
+      return {
+        label:
+          phase === 0
+            ? "Opening Gmail..."
+            : phase === 1
+              ? "Reading emails in your inbox..."
+              : "Preparing your response...",
+        tone: "active"
+      };
+    }
+    if (effectiveAction === "google_calendar") {
+      if (calendarMode === "create_or_update") {
+        return {
+          label:
+            phase === 0
+              ? "Opening Google Calendar..."
+              : phase === 1
+                ? "Drafting your calendar event details..."
+                : "Adding to your calendar...",
+          tone: "active"
+        };
+      }
+      return {
+        label:
+          phase === 0
+            ? "Opening Google Calendar..."
+            : phase === 1
+              ? "Checking availability and conflicts..."
+              : "Preparing scheduling response...",
+        tone: "active"
+      };
+    }
+    if (effectiveAction === "google_drive") {
+      return {
+        label:
+          phase === 0
+            ? "Opening Google Drive..."
+            : phase === 1
+              ? "Checking matching files and folders..."
+              : "Preparing file response...",
+        tone: "active"
+      };
+    }
+    if (route?.mode === "agent") {
+      return {
+        label: hasAssistantContent ? "Preparing response..." : "Understanding your request and gathering context...",
+        tone: "active"
+      };
+    }
+    return {
+      label: hasAssistantContent ? "Preparing response..." : "Thinking through your request...",
+      tone: "active"
+    };
+  };
+  const activity = buildActivity();
 
   return (
     <div className="chat-scroll chat-fade-scroll flex-1 overflow-y-auto px-1 pb-6 pt-4 md:px-2 md:pb-8">
@@ -87,7 +240,10 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
           <MessageItem key={message.id} message={message} />
         ))}
         {showTypingIndicator ? (
-          <TypingIndicator activityLabel={activity?.label ?? null} tone={activity?.tone} />
+          <TypingIndicator
+            activityLabel={activity?.label ?? null}
+            tone={activity?.tone}
+          />
         ) : null}
         <div ref={bottomRef} />
       </div>

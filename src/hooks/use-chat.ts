@@ -522,21 +522,48 @@ export function useChat(): UseChatResult {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let pendingChunk = "";
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const flushPendingChunk = () => {
+          if (!pendingChunk) return;
+          const nextChunk = pendingChunk;
+          pendingChunk = "";
+          updateMessagesForThread(requestThreadId, (existing) => {
+            const source = existing.length > 0 ? existing : baseMessages;
+            return source.map((message) =>
+              message.id === assistantId
+                ? { ...message, content: message.content + nextChunk }
+                : message
+            );
+          });
+        };
+
+        const scheduleChunkFlush = () => {
+          if (flushTimer) return;
+          flushTimer = setTimeout(() => {
+            flushTimer = null;
+            flushPendingChunk();
+          }, 32);
+        };
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
           if (!chunk) continue;
-          updateMessagesForThread(requestThreadId, (existing) => {
-            const source = existing.length > 0 ? existing : baseMessages;
-            return source.map((message) =>
-              message.id === assistantId
-                ? { ...message, content: message.content + chunk }
-                : message
-            );
-          });
+          pendingChunk += chunk;
+          scheduleChunkFlush();
         }
+        const tail = decoder.decode();
+        if (tail) {
+          pendingChunk += tail;
+        }
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        flushPendingChunk();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to stream assistant output.";

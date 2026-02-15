@@ -461,3 +461,52 @@ input:-webkit-autofill:active {
   background: rgb(var(--accent) / 0.16);
   color: rgb(var(--foreground) / 0.9);
 }
+
+.ui-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.ui-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-125%);
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.08) 45%,
+    rgb(255 255 255 / 0.2) 50%,
+    rgb(255 255 255 / 0.08) 55%,
+    transparent 100%
+  );
+  animation: ui-shimmer-sweep 2.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.ui-shimmer-soft::after {
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.05) 45%,
+    rgb(255 255 255 / 0.12) 50%,
+    rgb(255 255 255 / 0.05) 55%,
+    transparent 100%
+  );
+  animation-duration: 2.8s;
+}
+
+@keyframes ui-shimmer-sweep {
+  0% {
+    transform: translateX(-125%);
+  }
+  100% {
+    transform: translateX(125%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-shimmer::after {
+    animation: none;
+  }
+}
