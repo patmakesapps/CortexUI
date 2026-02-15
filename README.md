@@ -96,6 +96,7 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `POST /api/chat/threads` create thread
 - `GET /api/chat/[threadId]/messages` fetch recent messages
 - `POST /api/chat/[threadId]/messages` proxy chat orchestration to CortexLTM (`/v1/threads/{threadId}/chat`) or CortexAgent (`/v1/agent/threads/{threadId}/chat`) when enabled
+- `POST /api/chat/[threadId]/messages/[messageId]/reaction` save/clear a reaction on assistant messages (`thumbs_up`, `heart`, `angry`, `sad`, `brain`)
 - `PATCH /api/chat/[threadId]` rename thread
 - `DELETE /api/chat/[threadId]` delete thread
 - `POST /api/chat/[threadId]/promote` promote thread to core memory
@@ -111,6 +112,11 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 4. `addAssistantEvent(...source:"chatui_llm")` in CortexLTM
 
 This preserves summary trigger timing that depends on assistant writes.
+
+Assistant message reactions:
+- Reactions are behind a compact per-message toggle and expand inline on click/tap.
+- Selecting the `brain` reaction triggers an immediate upstream summary write in CortexLTM.
+- Reaction updates are optimistic and do not auto-scroll the transcript.
 
 ## Notes
 

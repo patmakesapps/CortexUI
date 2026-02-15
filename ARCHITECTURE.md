@@ -18,12 +18,13 @@
   - `threads/route.ts`: list/create thread endpoints
   - `[threadId]/route.ts`: rename/delete thread endpoints
   - `[threadId]/messages/route.ts`: message read + ordered write/stream endpoint
+  - `[threadId]/messages/[messageId]/reaction/route.ts`: assistant message reaction write endpoint
   - `[threadId]/promote/route.ts`: promote thread to core-memory endpoint
   - `[threadId]/summary/route.ts`: optional summary fetch endpoint
 - `src/components/chat/`
   - `chat-shell.tsx`: page-level composition
   - `message-list.tsx`: scrolling transcript + typing indicator
-  - `message-item.tsx`: bubble rendering + assistant animation
+  - `message-item.tsx`: bubble rendering, assistant animation, and reaction tray interactions
   - `composer.tsx`: input/send UX
   - `typing-indicator.tsx`: in-flight visual
 - `src/hooks/use-chat.ts`
@@ -47,6 +48,13 @@
    - build context (summary cues + semantic cues + short-term events)
    - generate assistant response
    - persist assistant event (`source: chatui_llm`)
+
+## Reaction Lifecycle (`POST /api/chat/[threadId]/messages/[messageId]/reaction`)
+
+1. Validate reaction (`thumbs_up`, `heart`, `angry`, `sad`, `brain`) or clear (`null`).
+2. Proxy write to CortexLTM reaction endpoint for the target assistant event.
+3. UI applies optimistic updates to message `meta.reaction` and reconciles with server response.
+4. Selecting `brain` triggers `force_update_summary(thread_id)` in CortexLTM.
 
 ## Error Propagation
 
