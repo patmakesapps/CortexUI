@@ -248,7 +248,7 @@ export function ChatSidebar({
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="truncate">{label}</span>
                             {thread.isCoreMemory ? (
-                              <span className="rounded border border-emerald-500/35 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                              <span className="rounded border border-emerald-500/55 bg-emerald-200/70 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-900">
                                 Core
                               </span>
                             ) : null}

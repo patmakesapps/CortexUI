@@ -291,7 +291,17 @@ function parseToolCardGroup(action: string | undefined, content: string): ToolCa
   if (action === "google_calendar") {
     return parseCalendarDraftCard(content) ?? parseIndexedToolCards(content);
   }
+  if (action === "google_drive") {
+    return parseIndexedToolCards(content);
+  }
   return null;
+}
+
+function openLabelForAction(action: string | undefined): string {
+  if (action === "google_drive") return "Open in Google Drive";
+  if (action === "google_calendar") return "Open in Google Calendar";
+  if (action === "google_gmail") return "Open in Gmail";
+  return "Open in Google";
 }
 
 function sanitizeGmailToolCardGroup(group: ToolCardGroup): ToolCardGroup {
@@ -396,6 +406,7 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
   if (
     source !== "cortexagent_web_search" &&
     source !== "cortexagent_google_calendar" &&
+    source !== "cortexagent_google_drive" &&
     source !== "cortexagent"
   ) {
     return null;
@@ -409,6 +420,12 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
       type: "tool",
       label: "Google Calendar"
     });
+  } else if (source === "cortexagent_google_drive") {
+    capabilities.push({
+      id: "google_drive",
+      type: "tool",
+      label: "Google Drive"
+    });
   }
   return {
     version: 1,
@@ -418,6 +435,8 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
         ? "web_search"
         : source === "cortexagent_google_calendar"
           ? "google_calendar"
+          : source === "cortexagent_google_drive"
+            ? "google_drive"
           : "chat",
     capabilities
   };
@@ -446,6 +465,7 @@ function readAgentRouteMeta(message: ChatMessage): AgentRouteMeta | null {
   if (
     source === "cortexagent_web_search" ||
     source === "cortexagent_google_calendar" ||
+    source === "cortexagent_google_drive" ||
     source === "cortexagent"
   ) {
     return { mode: "agent" };
@@ -476,6 +496,7 @@ export function MessageItem({ message }: MessageItemProps) {
     !isUser && agentTrace
       ? parseToolCardGroup(agentTrace.action, normalizedAssistantContent)
       : null;
+  const openCtaLabel = openLabelForAction(agentTrace?.action);
 
   const handleCopy = async (value: string, partIndex: number) => {
     try {
@@ -563,7 +584,7 @@ export function MessageItem({ message }: MessageItemProps) {
                       rel="noreferrer noopener"
                       className="ui-button inline-flex rounded-lg px-3 py-1.5 text-[13px] font-semibold transition"
                     >
-                      Open in Google
+                      {openCtaLabel}
                     </a>
                   ) : null}
                 </div>

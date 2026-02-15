@@ -23,6 +23,10 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
 - Updated Google Calendar integration UX:
   - connection now requests `calendar.events` scope for read + write
   - app copy now reflects read/create support, not read-only support
+- Added Google Drive integration UX:
+  - Google app connection now requests Drive metadata read scope
+  - Apps page shows Drive readiness alongside Calendar and Gmail
+  - chat tool cards include Drive results with app-specific CTA labels
 - Improved chat thread switching UX:
   - added transition/loading states when changing threads
   - composer disables during transition to prevent cross-thread sends
@@ -86,7 +90,7 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `POST /api/auth/oauth/start` start OAuth login (Google/GitHub)
 - `POST /api/auth/sign-out` clear local auth cookies
 - `POST /api/integrations/google/start` generate Google OAuth URL + PKCE/state cookies
-  - Requests `openid email profile https://www.googleapis.com/auth/calendar.events`
+  - Requests `openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose`
 - `GET /api/integrations/google/callback` OAuth callback relay to CortexAgent connect endpoint
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread

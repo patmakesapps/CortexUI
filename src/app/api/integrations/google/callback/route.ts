@@ -143,5 +143,8 @@ function hasScope(granted: Set<string>, required: string): boolean {
   if (required === "https://www.googleapis.com/auth/calendar.events") {
     return granted.has("https://www.googleapis.com/auth/calendar");
   }
+  if (required === "https://www.googleapis.com/auth/drive.metadata.readonly") {
+    return granted.has("https://www.googleapis.com/auth/drive.readonly");
+  }
   return false;
 }

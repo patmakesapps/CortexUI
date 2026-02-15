@@ -13,6 +13,7 @@ const DEFAULT_SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose"
 ];

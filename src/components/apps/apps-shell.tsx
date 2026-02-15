@@ -11,12 +11,13 @@ type BannerState =
   | null;
 
 const CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.events"];
+const DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.metadata.readonly"];
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose"
 ];
 const GOOGLE_IDENTITY_SCOPES = ["openid", "email", "profile"];
-const GOOGLE_APP_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...CALENDAR_SCOPES, ...GMAIL_SCOPES];
+const GOOGLE_APP_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...CALENDAR_SCOPES, ...DRIVE_SCOPES, ...GMAIL_SCOPES];
 
 export function AppsShell() {
   const router = useRouter();
@@ -148,6 +149,7 @@ export function AppsShell() {
     const hasGmailSuperScope =
       has("https://mail.google.com/") || has("https://www.googleapis.com/auth/gmail.modify");
     const hasCalendarSuperScope = has("https://www.googleapis.com/auth/calendar");
+    const hasDriveSuperScope = has("https://www.googleapis.com/auth/drive.readonly");
 
     return required.every((scope) => {
       if (scope === "https://www.googleapis.com/auth/gmail.readonly") {
@@ -159,12 +161,16 @@ export function AppsShell() {
       if (scope === "https://www.googleapis.com/auth/calendar.events") {
         return has(scope) || hasCalendarSuperScope;
       }
+      if (scope === "https://www.googleapis.com/auth/drive.metadata.readonly") {
+        return has(scope) || hasDriveSuperScope;
+      }
       return has(scope);
     });
   };
   const calendarReady = Boolean(googleConnected) && hasScopes(CALENDAR_SCOPES);
+  const driveReady = Boolean(googleConnected) && hasScopes(DRIVE_SCOPES);
   const gmailReady = Boolean(googleConnected) && hasScopes(GMAIL_SCOPES);
-  const allGoogleAppsReady = calendarReady && gmailReady;
+  const allGoogleAppsReady = calendarReady && driveReady && gmailReady;
 
   return (
     <main className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-4 py-8 md:px-6">
@@ -204,7 +210,7 @@ export function AppsShell() {
       <div className="space-y-4">
         <IntegrationCard
           name="Google"
-          description="One connection for all Google apps. Current: Calendar and Gmail."
+          description="One connection for all Google apps. Current: Calendar, Drive, and Gmail."
           icon={<GoogleIcon />}
           connected={allGoogleAppsReady}
           checking={googleConnected === null}
@@ -218,6 +224,12 @@ export function AppsShell() {
                 name="Google Calendar"
                 description="Read upcoming events and create calendar events."
                 ready={calendarReady}
+              />
+              <AppStatusRow
+                icon={<DriveIcon />}
+                name="Google Drive"
+                description="Find and open recent files from Drive."
+                ready={driveReady}
               />
               <AppStatusRow
                 icon={<GmailIcon />}
@@ -355,6 +367,16 @@ function GmailIcon() {
       <rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="#ffffff" />
       <path d="M4 7.5L12 13.5L20 7.5V18H4V7.5Z" fill="#e8eaed" />
       <path d="M4 7.5V18H7V10.2L12 13.9L17 10.2V18H20V7.5L12 13.5L4 7.5Z" fill="#ea4335" />
+    </svg>
+  );
+}
+
+function DriveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+      <path d="M8 3.5h7l4 7H12z" fill="#0f9d58" />
+      <path d="M5 17.5l3-5h7l-3 5z" fill="#f4b400" />
+      <path d="M12 10.5h7l-3 5h-7z" fill="#4285f4" />
     </svg>
   );
 }
