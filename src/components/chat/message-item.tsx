@@ -304,6 +304,58 @@ function openLabelForAction(action: string | undefined): string {
   return "Open in Google";
 }
 
+function ToolCardIcon({ action }: { action: string | undefined }) {
+  if (action === "google_calendar") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+        <rect x="3" y="5" width="18" height="16" rx="2" fill="#8ab4f8" />
+        <rect x="3" y="5" width="18" height="5" rx="2" fill="#4285f4" />
+        <rect x="7" y="2" width="2" height="5" rx="1" fill="#e8f0fe" />
+        <rect x="15" y="2" width="2" height="5" rx="1" fill="#e8f0fe" />
+        <rect x="7" y="12" width="4" height="4" rx="1" fill="#0b57d0" />
+      </svg>
+    );
+  }
+  if (action === "google_gmail") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+        <rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="#ffffff" />
+        <path d="M4 7.5L12 13.5L20 7.5V18H4V7.5Z" fill="#e8eaed" />
+        <path d="M4 7.5V18H7V10.2L12 13.9L17 10.2V18H20V7.5L12 13.5L4 7.5Z" fill="#ea4335" />
+      </svg>
+    );
+  }
+  if (action === "google_drive") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+        <path d="M8 3.5h7l4 7H12z" fill="#0f9d58" />
+        <path d="M5 17.5l3-5h7l-3 5z" fill="#f4b400" />
+        <path d="M12 10.5h7l-3 5h-7z" fill="#4285f4" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+      <path
+        d="M21.35 12.15c0-.77-.07-1.5-.2-2.2H12v4.17h5.23a4.47 4.47 0 0 1-1.94 2.93v2.43h3.14c1.84-1.7 2.92-4.2 2.92-7.33Z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 21.6c2.63 0 4.84-.87 6.45-2.36l-3.14-2.43c-.87.58-1.99.92-3.31.92-2.55 0-4.71-1.72-5.48-4.02H3.28v2.5A9.73 9.73 0 0 0 12 21.6Z"
+        fill="#34A853"
+      />
+      <path
+        d="M6.52 13.71a5.86 5.86 0 0 1 0-3.42v-2.5H3.28a9.73 9.73 0 0 0 0 8.42l3.24-2.5Z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 6.27c1.43 0 2.72.49 3.73 1.46l2.8-2.8C16.84 3.37 14.63 2.4 12 2.4a9.73 9.73 0 0 0-8.72 5.39l3.24 2.5c.77-2.3 2.93-4.02 5.48-4.02Z"
+        fill="#EA4335"
+      />
+    </svg>
+  );
+}
+
 function sanitizeGmailToolCardGroup(group: ToolCardGroup): ToolCardGroup {
   return {
     ...group,
@@ -406,6 +458,7 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
   if (
     source !== "cortexagent_web_search" &&
     source !== "cortexagent_google_calendar" &&
+    source !== "cortexagent_google_gmail" &&
     source !== "cortexagent_google_drive" &&
     source !== "cortexagent"
   ) {
@@ -419,6 +472,12 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
       id: "google_calendar",
       type: "tool",
       label: "Google Calendar"
+    });
+  } else if (source === "cortexagent_google_gmail") {
+    capabilities.push({
+      id: "google_gmail",
+      type: "tool",
+      label: "Gmail"
     });
   } else if (source === "cortexagent_google_drive") {
     capabilities.push({
@@ -435,6 +494,8 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
         ? "web_search"
         : source === "cortexagent_google_calendar"
           ? "google_calendar"
+          : source === "cortexagent_google_gmail"
+            ? "google_gmail"
           : source === "cortexagent_google_drive"
             ? "google_drive"
           : "chat",
@@ -465,6 +526,7 @@ function readAgentRouteMeta(message: ChatMessage): AgentRouteMeta | null {
   if (
     source === "cortexagent_web_search" ||
     source === "cortexagent_google_calendar" ||
+    source === "cortexagent_google_gmail" ||
     source === "cortexagent_google_drive" ||
     source === "cortexagent"
   ) {
@@ -488,6 +550,7 @@ export function MessageItem({ message }: MessageItemProps) {
   const visibleCapabilities = agentTrace
     ? agentTrace.capabilities.filter(
         (capability) =>
+          capability.id !== agentTrace.action &&
           capability.label.trim().toLowerCase() !== normalizedAction.trim().toLowerCase()
       )
     : [];
@@ -560,9 +623,14 @@ export function MessageItem({ message }: MessageItemProps) {
                 key={`${message.id}-tool-card-${cardIndex}`}
                 className="ui-panel rounded-2xl border border-[rgb(var(--border)/0.75)] p-4 shadow-[0_16px_32px_rgb(8_47_73/0.18)]"
               >
-                <h4 className="mb-3 text-[18px] font-semibold leading-7 text-[rgb(var(--foreground)/1)]">
-                  {card.title}
-                </h4>
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="ui-panel ui-panel-strong inline-flex h-8 w-8 items-center justify-center rounded-md">
+                    <ToolCardIcon action={agentTrace?.action} />
+                  </span>
+                  <h4 className="text-[18px] font-semibold leading-7 text-[rgb(var(--foreground)/1)]">
+                    {card.title}
+                  </h4>
+                </div>
                 <div className="space-y-2">
                   {card.fields.map((field, fieldIndex) => (
                     <div

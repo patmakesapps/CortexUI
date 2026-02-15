@@ -169,7 +169,7 @@ export function ChatSidebar({
               onClick={() => void onCreateThread()}
               className="ui-button inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition"
             >
-              <span className="text-base leading-none">🧠</span>
+              <span className="text-base leading-none"></span>
               New chat
             </button>
           ) : (

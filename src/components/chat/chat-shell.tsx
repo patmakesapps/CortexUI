@@ -167,8 +167,10 @@ export function ChatShell() {
         {error ? (
           <div className="ui-overlay fixed inset-0 z-[60] flex items-center justify-center px-4 backdrop-blur-sm">
             <div className="ui-panel w-full max-w-md rounded-xl p-4 shadow-2xl">
-              <h3 className="text-base font-semibold text-rose-100">Something went wrong</h3>
-              <p className="mt-2 text-sm text-rose-200">{error}</p>
+              <div className="ui-alert-error rounded-lg px-3 py-2">
+                <h3 className="text-base font-semibold">Something went wrong</h3>
+                <p className="mt-2 text-sm">{error}</p>
+              </div>
               <div className="mt-4 flex justify-end">
                 <button
                   type="button"
