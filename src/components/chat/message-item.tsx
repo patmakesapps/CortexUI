@@ -91,7 +91,7 @@ function renderTextWithLinks(value: string) {
         href={href}
         target="_blank"
         rel="noreferrer noopener"
-        className="underline decoration-cyan-300/60 underline-offset-4 transition hover:text-cyan-200 hover:decoration-cyan-200"
+        className="ui-link transition"
       >
         {href}
       </a>
@@ -490,19 +490,19 @@ export function MessageItem({ message }: MessageItemProps) {
   };
 
   const content = isUser ? (
-    <div className="ml-auto max-w-[85%] rounded-3xl border border-slate-500/40 bg-slate-700/55 px-4 py-3 text-[17px] leading-8 text-slate-100 shadow-[0_12px_30px_rgb(2_6_23/0.25)] md:max-w-[70%] md:text-[18px]">
+    <div className="ui-user-bubble ml-auto max-w-[85%] rounded-3xl px-4 py-3 text-[17px] leading-8 shadow-[0_12px_30px_rgb(2_6_23/0.25)] md:max-w-[70%] md:text-[18px]">
       <p className="whitespace-pre-wrap">{message.content || " "}</p>
     </div>
   ) : (
-    <div className="mr-auto max-w-[90%] px-3 py-2 text-[17px] leading-8 text-slate-100 md:max-w-[78%] md:text-[18px]">
+    <div className="mr-auto max-w-[90%] px-3 py-2 text-[17px] leading-8 text-[rgb(var(--foreground)/1)] md:max-w-[78%] md:text-[18px]">
       {agentRoute?.mode === "agent_fallback" ? (
         <div className="mb-3 rounded-2xl border border-amber-300/35 bg-gradient-to-r from-amber-500/18 via-amber-400/10 to-transparent px-3 py-2 text-[12px] leading-5 text-amber-100 shadow-[0_14px_26px_rgb(120_53_15/0.25)] backdrop-blur-sm">
           <p className="font-semibold tracking-wide text-amber-50">Agent fallback</p>
           <p>{agentRoute.warning ?? "Agentic tools were unavailable. This reply used direct memory mode."}</p>
         </div>
       ) : agentTrace && !isChatRouted && isWebSearchRouted ? (
-        <div className="mb-3 rounded-2xl border border-cyan-300/35 bg-gradient-to-r from-cyan-500/22 via-cyan-400/10 to-transparent px-3 py-2 text-[12px] leading-5 text-cyan-100 shadow-[0_14px_30px_rgb(8_47_73/0.25)] backdrop-blur-sm">
-          <p className="font-semibold tracking-wide text-cyan-50">Agentic behavior active</p>
+        <div className="mb-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-gradient-to-r from-[rgb(var(--accent)/0.2)] via-[rgb(var(--accent)/0.08)] to-transparent px-3 py-2 text-[12px] leading-5 text-[rgb(var(--foreground)/0.9)] shadow-[0_14px_30px_rgb(8_47_73/0.25)] backdrop-blur-sm">
+          <p className="ui-accent-text font-semibold tracking-wide">Agentic behavior active</p>
           <p>
             {agentTrace.action === "web_search"
               ? "This response was generated with live web search."
@@ -512,16 +512,16 @@ export function MessageItem({ message }: MessageItemProps) {
       ) : null}
       {agentTrace && !isChatRouted ? (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-2.5 py-0.5 font-semibold uppercase tracking-wide text-cyan-200">
+          <span className="ui-badge-info rounded-full px-2.5 py-0.5 font-semibold uppercase tracking-wide">
             Agent Mode
           </span>
-          <span className="rounded-full border border-slate-400/30 bg-slate-700/40 px-2.5 py-0.5 font-semibold text-slate-200">
+          <span className="ui-badge-neutral rounded-full px-2.5 py-0.5 font-semibold">
             {normalizedAction}
           </span>
           {visibleCapabilities.map((capability) => (
             <span
               key={`${message.id}-${capability.id}`}
-              className="rounded-full border border-emerald-300/30 bg-emerald-500/15 px-2.5 py-0.5 font-semibold text-emerald-200"
+              className="ui-badge-success rounded-full px-2.5 py-0.5 font-semibold"
             >
               {capability.label}
             </span>
@@ -531,27 +531,27 @@ export function MessageItem({ message }: MessageItemProps) {
       <div className="space-y-4">
         {toolCardGroup ? (
           <div className="space-y-3">
-            <p className="text-[15px] font-semibold uppercase tracking-wide text-cyan-100/90">
+            <p className="ui-accent-soft text-[15px] font-semibold uppercase tracking-wide">
               {toolCardGroup.heading}
             </p>
             {toolCardGroup.cards.map((card, cardIndex) => (
               <article
                 key={`${message.id}-tool-card-${cardIndex}`}
-                className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-slate-800/85 via-slate-800/60 to-cyan-950/30 p-4 shadow-[0_16px_32px_rgb(8_47_73/0.22)]"
+                className="ui-panel rounded-2xl border border-[rgb(var(--border)/0.75)] p-4 shadow-[0_16px_32px_rgb(8_47_73/0.18)]"
               >
-                <h4 className="mb-3 text-[18px] font-semibold leading-7 text-slate-100">
+                <h4 className="mb-3 text-[18px] font-semibold leading-7 text-[rgb(var(--foreground)/1)]">
                   {card.title}
                 </h4>
                 <div className="space-y-2">
                   {card.fields.map((field, fieldIndex) => (
                     <div
                       key={`${message.id}-tool-card-${cardIndex}-field-${fieldIndex}`}
-                      className="rounded-xl border border-slate-500/35 bg-slate-900/35 px-3 py-2"
+                      className="ui-panel ui-panel-strong rounded-xl px-3 py-2"
                     >
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-200/85">
+                      <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
                         {field.label}
                       </p>
-                      <p className="mt-1 whitespace-pre-wrap text-[16px] leading-7 text-slate-100">
+                      <p className="mt-1 whitespace-pre-wrap text-[16px] leading-7 text-[rgb(var(--foreground)/0.96)]">
                         {renderTextWithLinks(field.value)}
                       </p>
                     </div>
@@ -561,7 +561,7 @@ export function MessageItem({ message }: MessageItemProps) {
                       href={card.link}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="inline-flex rounded-lg border border-cyan-300/35 bg-cyan-500/10 px-3 py-1.5 text-[13px] font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+                      className="ui-button inline-flex rounded-lg px-3 py-1.5 text-[13px] font-semibold transition"
                     >
                       Open in Google
                     </a>
@@ -570,7 +570,9 @@ export function MessageItem({ message }: MessageItemProps) {
               </article>
             ))}
             {toolCardGroup.footer ? (
-              <p className="text-[14px] leading-6 text-slate-300">{toolCardGroup.footer}</p>
+              <p className="text-[14px] leading-6 text-[rgb(var(--foreground)/0.72)]">
+                {toolCardGroup.footer}
+              </p>
             ) : null}
           </div>
         ) : (

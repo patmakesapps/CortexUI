@@ -1,7 +1,14 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BrainLoader } from "@/components/ui/brain-loader";
+import {
+  DEFAULT_UI_SKIN,
+  applyUiSkin,
+  resolveUiSkin,
+  UI_SKIN_STORAGE_KEY,
+  type UiSkinId
+} from "@/lib/ui/theme";
 
 type Props = {
   onAuthenticated: () => void;
@@ -43,6 +50,7 @@ function GitHubIcon() {
 }
 
 export function AuthPanel({ onAuthenticated }: Props) {
+  const [skin, setSkin] = useState<UiSkinId>(DEFAULT_UI_SKIN);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction>("none");
@@ -54,6 +62,12 @@ export function AuthPanel({ onAuthenticated }: Props) {
     () => EMAIL_PATTERN.test(email.trim()) && password.length >= 8 && !isBusy,
     [email, isBusy, password.length]
   );
+
+  useEffect(() => {
+    const stored =
+      typeof window === "undefined" ? null : window.localStorage.getItem(UI_SKIN_STORAGE_KEY);
+    setSkin(resolveUiSkin(stored));
+  }, []);
 
   async function readError(res: Response): Promise<string> {
     const fallback = "Something went wrong. Please try again.";
@@ -189,18 +203,26 @@ export function AuthPanel({ onAuthenticated }: Props) {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-md flex-col rounded-2xl border border-slate-700/60 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30 backdrop-blur">
+    <section className="ui-panel mx-auto flex w-full max-w-md flex-col rounded-2xl p-6 shadow-2xl shadow-slate-950/20 backdrop-blur">
       <div className="mb-3 flex justify-center">
-        <BrainLoader subtle />
+        <button
+          type="button"
+          onClick={() => setSkin(applyUiSkin(skin === "dark" ? "light" : "dark"))}
+          aria-label={skin === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          title={skin === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          className="rounded-full transition hover:scale-[1.02]"
+        >
+          <BrainLoader subtle />
+        </button>
       </div>
-      <h1 className="text-2xl font-semibold text-slate-100">Sign in to Cortex</h1>
-      <p className="mt-2 text-sm text-slate-400">
+      <h1 className="ui-text-strong text-2xl font-semibold">Sign in to Cortex</h1>
+      <p className="ui-text-subtle mt-2 text-sm">
         Memory-aware chats from any device.
       </p>
 
       <form className="mt-6 space-y-4" onSubmit={handleSignIn}>
         <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
+          <label className="ui-text-subtle mb-1 block text-xs font-medium uppercase tracking-wide">
             Email
           </label>
           <input
@@ -212,11 +234,11 @@ export function AuthPanel({ onAuthenticated }: Props) {
             autoCapitalize="none"
             spellCheck={false}
             placeholder="Enter your email"
-            className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            className="ui-input w-full rounded-xl px-3 py-2.5 text-sm outline-none transition"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
+          <label className="ui-text-subtle mb-1 block text-xs font-medium uppercase tracking-wide">
             Password
           </label>
           <input
@@ -228,7 +250,7 @@ export function AuthPanel({ onAuthenticated }: Props) {
             autoCapitalize="none"
             spellCheck={false}
             placeholder="Enter your password"
-            className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            className="ui-input w-full rounded-xl px-3 py-2.5 text-sm outline-none transition"
           />
         </div>
 
@@ -236,7 +258,7 @@ export function AuthPanel({ onAuthenticated }: Props) {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button-primary rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pendingAction === "signIn" ? "Signing in..." : "Sign In"}
           </button>
@@ -244,7 +266,7 @@ export function AuthPanel({ onAuthenticated }: Props) {
             type="button"
             disabled={!canSubmit}
             onClick={handleSignUp}
-            className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pendingAction === "signUp" ? "Creating..." : "Create Account"}
           </button>
@@ -252,9 +274,9 @@ export function AuthPanel({ onAuthenticated }: Props) {
       </form>
 
       <div className="my-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-slate-700/70" />
-        <span className="text-xs uppercase tracking-wide text-slate-500">or</span>
-        <div className="h-px flex-1 bg-slate-700/70" />
+        <div className="h-px flex-1 bg-[rgb(var(--border)/0.75)]" />
+        <span className="ui-text-subtle text-xs uppercase tracking-wide">or</span>
+        <div className="h-px flex-1 bg-[rgb(var(--border)/0.75)]" />
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -262,7 +284,7 @@ export function AuthPanel({ onAuthenticated }: Props) {
           type="button"
           disabled={isBusy}
           onClick={() => handleOAuth("google")}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ui-button inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pendingAction === "google" ? (
             "Redirecting..."
@@ -277,7 +299,7 @@ export function AuthPanel({ onAuthenticated }: Props) {
           type="button"
           disabled={isBusy}
           onClick={() => handleOAuth("github")}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ui-button inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pendingAction === "github" ? (
             "Redirecting..."
@@ -294,12 +316,12 @@ export function AuthPanel({ onAuthenticated }: Props) {
         <div
           className={`mt-5 rounded-xl px-3 py-2.5 text-sm leading-relaxed ${
             error
-              ? "border border-rose-700/40 bg-rose-900/15 text-rose-100"
-              : "border border-cyan-800/60 bg-cyan-900/20 text-cyan-100"
+              ? "ui-alert-error"
+              : "ui-alert-info"
           }`}
         >
           {error ? <p>{error}</p> : null}
-          {hint ? <p className={error ? "mt-1 text-rose-200/85" : ""}>{hint}</p> : null}
+          {hint ? <p className={error ? "mt-1" : ""}>{hint}</p> : null}
         </div>
       ) : null}
     </section>

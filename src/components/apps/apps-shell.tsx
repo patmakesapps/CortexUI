@@ -170,15 +170,15 @@ export function AppsShell() {
     <main className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-4 py-8 md:px-6">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-100">Apps & Services</h1>
-          <p className="mt-2 text-sm text-slate-400">
+          <h1 className="text-2xl font-semibold text-[rgb(var(--foreground)/1)]">Apps & Services</h1>
+          <p className="ui-text-muted mt-2 text-sm">
             Connect external apps so Cortex can use agent tools on your behalf.
           </p>
         </div>
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-slate-800/80 px-3 text-sm text-slate-100 transition hover:bg-slate-700/80"
+          className="ui-button inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm transition"
         >
           Back to Chat
         </button>
@@ -193,7 +193,7 @@ export function AppsShell() {
             <button
               type="button"
               onClick={() => setBanner(null)}
-              className="text-xs text-slate-200 hover:text-slate-100"
+              className="text-xs text-[rgb(var(--foreground)/0.8)] hover:text-[rgb(var(--foreground)/1)]"
             >
               Dismiss
             </button>
@@ -245,16 +245,16 @@ function IntegrationCard(props: {
   extra?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-700/80 bg-slate-900/65 p-4">
+    <div className="ui-panel rounded-xl p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-md bg-slate-800/80">
+          <div className="ui-panel ui-panel-strong mt-0.5 flex h-9 w-9 items-center justify-center rounded-md">
             {props.icon}
           </div>
           <div>
-            <h2 className="text-lg font-medium text-slate-100">{props.name}</h2>
-            <p className="mt-1 text-sm text-slate-400">{props.description}</p>
-            <p className="mt-1 text-xs text-slate-500">
+            <h2 className="text-lg font-medium text-[rgb(var(--foreground)/1)]">{props.name}</h2>
+            <p className="ui-text-muted mt-1 text-sm">{props.description}</p>
+            <p className="mt-1 text-xs text-[rgb(var(--muted)/0.85)]">
               Connect/disconnect applies to all Google apps in this group.
             </p>
           </div>
@@ -262,8 +262,8 @@ function IntegrationCard(props: {
         <span
           className={`rounded border px-2 py-1 text-xs ${
             props.connected
-              ? "border-emerald-500/45 bg-emerald-500/15 text-emerald-200"
-              : "border-amber-500/45 bg-amber-500/15 text-amber-200"
+              ? "ui-status-ready"
+              : "ui-status-warning"
           }`}
         >
           {props.checking ? "Checking..." : props.connected ? "Connected" : "Permissions required"}
@@ -274,7 +274,7 @@ function IntegrationCard(props: {
           type="button"
           onClick={props.onConnect}
           disabled={props.busy}
-          className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600/80 bg-slate-800/80 px-4 text-sm text-slate-100 transition hover:bg-slate-700/80 disabled:cursor-not-allowed disabled:opacity-60"
+          className="ui-button inline-flex h-9 items-center justify-center rounded-lg px-4 text-sm transition disabled:cursor-not-allowed disabled:opacity-60"
         >
           {props.busy ? "Connecting..." : props.buttonLabel}
         </button>
@@ -291,21 +291,21 @@ function AppStatusRow(props: {
   ready: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2">
+    <div className="ui-panel ui-panel-strong flex items-center justify-between gap-3 rounded-lg px-3 py-2">
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-800/80">
+        <div className="ui-panel flex h-8 w-8 items-center justify-center rounded-md">
           {props.icon}
         </div>
         <div>
-          <p className="text-sm font-medium text-slate-100">{props.name}</p>
-          <p className="text-xs text-slate-400">{props.description}</p>
+          <p className="text-sm font-medium text-[rgb(var(--foreground)/1)]">{props.name}</p>
+          <p className="ui-text-muted text-xs">{props.description}</p>
         </div>
       </div>
       <span
         className={`rounded border px-2 py-1 text-xs ${
           props.ready
-            ? "border-emerald-500/45 bg-emerald-500/15 text-emerald-200"
-            : "border-amber-500/45 bg-amber-500/15 text-amber-200"
+            ? "ui-status-ready"
+            : "ui-status-warning"
         }`}
       >
         {props.ready ? "Ready" : "Needs scope"}

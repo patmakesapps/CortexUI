@@ -5,6 +5,7 @@ import { ChatShell } from "@/components/chat/chat-shell";
 import { AppsShell } from "@/components/apps/apps-shell";
 import { AuthPanel } from "@/components/auth/auth-panel";
 import { BrainLoader } from "@/components/ui/brain-loader";
+import { ThemeSelect } from "@/components/ui/theme-select";
 
 type SessionState = {
   loading: boolean;
@@ -83,7 +84,7 @@ export function AuthGate({ requireAuth, view = "chat" }: Props) {
   if (session.loading) {
     return (
       <main className="flex h-[100dvh] items-center justify-center px-4">
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-900/70 px-6 py-5 text-sm text-slate-300">
+        <div className="ui-panel flex flex-col items-center gap-3 rounded-xl px-6 py-5 text-sm ui-text-body">
           <BrainLoader />
           <p>Checking your session...</p>
         </div>
@@ -93,11 +94,13 @@ export function AuthGate({ requireAuth, view = "chat" }: Props) {
 
   if (!session.authenticated) {
     return (
-      <main className="flex h-[100dvh] items-center justify-center px-4">
+      <main className="relative flex h-[100dvh] items-center justify-center px-4">
         <div className="w-full max-w-lg">
           <AuthPanel onAuthenticated={refreshSession} />
           {session.error ? (
-            <p className="mt-3 text-center text-xs text-rose-300">{session.error}</p>
+            <p className="mt-3 text-center text-xs text-[rgb(var(--status-danger)/1)]">
+              {session.error}
+            </p>
           ) : null}
         </div>
       </main>
@@ -106,16 +109,19 @@ export function AuthGate({ requireAuth, view = "chat" }: Props) {
 
   return (
     <div className="relative h-[100dvh] overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-slate-200/15 bg-slate-900/45 px-4 py-4 shadow-[0_16px_42px_rgba(2,6,23,0.5)] backdrop-blur-2xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 text-xs text-slate-300">
-          <span className="text-sm font-semibold tracking-[0.14em] text-cyan-200/95">Cortex AI</span>
+      <div className="ui-topbar pointer-events-none absolute inset-x-0 top-0 z-20 px-4 py-4 shadow-[0_16px_42px_rgba(2,6,23,0.28)] backdrop-blur-2xl backdrop-saturate-150">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 text-xs ui-text-muted">
+          <span className="text-sm font-semibold tracking-[0.14em] text-[rgb(var(--accent)/1)]">
+            Cortex AI
+          </span>
           <div className="pointer-events-auto flex items-center gap-3">
             <span className="hidden md:inline">{session.email ?? "Signed in"}</span>
+            <ThemeSelect />
             <button
               type="button"
               onClick={signOut}
               disabled={isSigningOut}
-              className="rounded-md border border-slate-500/75 bg-slate-800/75 px-3 py-1.5 text-xs text-slate-100 transition hover:bg-slate-700/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="ui-button inline-flex h-[34px] items-center rounded-md px-3 py-1.5 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSigningOut ? "Signing out..." : "Sign out"}
             </button>

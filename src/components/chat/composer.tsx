@@ -39,7 +39,7 @@ export function Composer({
       }
     >
       <div
-        className={`mx-auto flex w-full items-end gap-2 border border-border/70 bg-[rgb(var(--panel)/0.95)] shadow-[0_0_0_1px_rgb(255_255_255/0.02),0_18px_35px_rgb(0_0_0/0.26)] ${
+        className={`ui-panel mx-auto flex w-full items-end gap-2 shadow-[0_0_0_1px_rgb(255_255_255/0.02),0_18px_35px_rgb(0_0_0/0.26)] ${
           inline
             ? "max-w-4xl rounded-3xl p-3 md:p-3.5"
             : "max-w-4xl rounded-3xl p-3"
@@ -62,7 +62,7 @@ export function Composer({
           }}
           rows={1}
           placeholder="Message Cortex..."
-          className={`flex-1 resize-none overflow-hidden border-0 bg-transparent text-slate-100 outline-none ring-[rgb(var(--accent)/0.45)] placeholder:text-slate-400 focus:ring-0 ${
+          className={`flex-1 resize-none overflow-hidden border-0 bg-transparent text-[rgb(var(--foreground)/1)] outline-none ring-[rgb(var(--accent)/0.45)] placeholder:text-[rgb(var(--muted)/1)] focus:ring-0 ${
             inline
               ? "min-h-14 rounded-2xl px-4 py-3 text-base"
               : "min-h-12 rounded-2xl px-4 py-3 text-base"
@@ -73,7 +73,7 @@ export function Composer({
           <button
             type="submit"
             disabled={isDisabled || isStreaming}
-            className={`bg-slate-100/12 font-semibold text-slate-100 transition hover:bg-slate-100/20 disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`ui-button font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
               inline
                 ? "h-14 rounded-2xl px-5 text-base"
                 : "h-12 rounded-2xl px-5 text-base"

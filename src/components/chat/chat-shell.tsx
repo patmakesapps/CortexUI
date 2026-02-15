@@ -56,7 +56,7 @@ export function ChatShell() {
   return (
     <main className="flex h-full max-h-full w-full overflow-hidden">
       <div
-        className={`fixed inset-0 z-30 bg-slate-950/65 transition-opacity md:hidden ${
+        className={`ui-overlay fixed inset-0 z-30 transition-opacity md:hidden ${
           mobileSidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={() => setMobileSidebarOpen(false)}
@@ -88,22 +88,22 @@ export function ChatShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-slate-700/40 px-3 py-2 md:hidden">
+        <div className="ui-topbar flex items-center gap-2 px-3 py-2 md:hidden">
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(true)}
-            className="inline-flex h-9 items-center justify-center rounded-md border border-slate-600/70 bg-slate-800/75 px-2.5 text-sm text-slate-100"
+            className="ui-button inline-flex h-9 items-center justify-center rounded-md px-2.5 text-sm md:hidden"
             aria-label="Open chats"
           >
             Menu
           </button>
-          <span className="truncate text-sm text-slate-300">
+          <span className="ui-text-muted truncate text-sm">
             {threads.find((thread) => thread.id === threadId)?.title?.trim() || "New chat"}
           </span>
         </div>
 
         {isBootstrapping ? (
-          <section className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-sm text-slate-400">
+          <section className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-sm text-[rgb(var(--foreground)/0.62)]">
             <BrainLoader />
             <p>Initializing chat thread...</p>
           </section>
@@ -127,10 +127,10 @@ export function ChatShell() {
           <section className="flex flex-1 flex-col items-center justify-center px-3 md:px-4">
             <div className="mx-auto w-full max-w-4xl">
               <div className="mb-7 text-center">
-                <h2 className="text-3xl font-semibold text-slate-100 md:text-4xl">
+                <h2 className="text-3xl font-semibold text-[rgb(var(--foreground)/0.9)] md:text-4xl">
                   Welcome back
                 </h2>
-                <p className="mt-3 text-sm text-slate-400 md:text-base">
+                <p className="mt-3 text-sm text-[rgb(var(--muted)/1)] md:text-base">
                   Ask anything to get started. Your context is memory-aware.
                 </p>
               </div>
@@ -141,7 +141,7 @@ export function ChatShell() {
                 inline
               />
               {isThreadTransitioning ? (
-                <div className="mt-3 text-center text-xs text-slate-400">
+            <div className="ui-text-muted mt-3 text-center text-xs">
                   Preparing chat...
                 </div>
               ) : null}
@@ -152,7 +152,7 @@ export function ChatShell() {
             <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 md:px-4">
               <MessageList messages={messages} isStreaming={isStreaming} />
               {isThreadTransitioning ? (
-                <div className="px-2 py-2 text-xs text-slate-400">Loading messages...</div>
+                <div className="ui-text-muted px-2 py-2 text-xs">Loading messages...</div>
               ) : null}
             </section>
 
@@ -165,15 +165,15 @@ export function ChatShell() {
         )}
 
         {error ? (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-xl border border-rose-700/45 bg-slate-900/95 p-4 shadow-2xl">
+          <div className="ui-overlay fixed inset-0 z-[60] flex items-center justify-center px-4 backdrop-blur-sm">
+            <div className="ui-panel w-full max-w-md rounded-xl p-4 shadow-2xl">
               <h3 className="text-base font-semibold text-rose-100">Something went wrong</h3>
               <p className="mt-2 text-sm text-rose-200">{error}</p>
               <div className="mt-4 flex justify-end">
                 <button
                   type="button"
                   onClick={clearError}
-                  className="inline-flex h-9 items-center justify-center rounded-md border border-slate-600/70 bg-slate-800/75 px-3 text-sm text-slate-100 transition hover:bg-slate-700/80"
+                  className="ui-button inline-flex h-9 items-center justify-center rounded-md px-3 text-sm transition"
                 >
                   Close
                 </button>
