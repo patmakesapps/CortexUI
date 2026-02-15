@@ -247,6 +247,28 @@ export class CortexHttpProvider implements MemoryProvider {
     return this.addEvent(threadId, "assistant", text, meta);
   }
 
+  async setEventReaction(
+    threadId: string,
+    eventId: string,
+    reaction: "thumbs_up" | "heart" | "angry" | "sad" | "brain" | null
+  ): Promise<{ reaction: string | null; summaryUpdated: boolean }> {
+    const payload = await this.requestJson<{
+      reaction?: unknown;
+      summary_updated?: unknown;
+    }>(
+      `/v1/threads/${encodeURIComponent(threadId)}/events/${encodeURIComponent(eventId)}/reaction`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reaction })
+      }
+    );
+
+    return {
+      reaction: typeof payload.reaction === "string" ? payload.reaction : null,
+      summaryUpdated: Boolean(payload.summary_updated)
+    };
+  }
+
   async buildMemoryContext(
     params: BuildMemoryContextParams
   ): Promise<ContextMessage[]> {

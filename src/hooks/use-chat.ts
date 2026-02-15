@@ -7,6 +7,8 @@ export type ChatMessage = UIMessage & {
   isStreaming?: boolean;
 };
 
+export type MessageReaction = "thumbs_up" | "heart" | "angry" | "sad" | "brain";
+
 export type ChatThread = Pick<ThreadRecord, "id" | "title" | "createdAt" | "isCoreMemory">;
 
 type UseChatResult = {
@@ -24,6 +26,11 @@ type UseChatResult = {
   deleteThread: (threadId: string) => Promise<void>;
   promoteThread: (threadId: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
+  reactToMessage: (
+    threadId: string,
+    messageId: string,
+    reaction: MessageReaction
+  ) => Promise<void>;
 };
 
 type AgentCapability = {
@@ -597,6 +604,84 @@ export function useChat(): UseChatResult {
     [createRemoteThread, isStreaming, persistRename, setMessagesForThread, threads, updateMessagesForThread]
   );
 
+  const reactToMessage = useCallback(
+    async (targetThreadId: string, messageId: string, reaction: MessageReaction) => {
+      if (!targetThreadId || !messageId) return;
+
+      const existingMessages = messageCacheRef.current[targetThreadId] ?? [];
+      const targetMessage = existingMessages.find((message) => message.id === messageId);
+      if (!targetMessage || targetMessage.role !== "assistant") return;
+
+      const currentReaction =
+        targetMessage.meta && typeof targetMessage.meta === "object"
+          ? ((targetMessage.meta as Record<string, unknown>).reaction as string | undefined)
+          : undefined;
+      const nextReaction = currentReaction === reaction ? null : reaction;
+
+      setError(null);
+      updateMessagesForThread(targetThreadId, (existing) =>
+        existing.map((message) => {
+          if (message.id !== messageId) return message;
+          const nextMeta = { ...(message.meta ?? {}) } as Record<string, unknown>;
+          if (nextReaction) {
+            nextMeta.reaction = nextReaction;
+          } else {
+            delete nextMeta.reaction;
+          }
+          return { ...message, meta: nextMeta };
+        })
+      );
+
+      try {
+        const response = await fetch(
+          `/api/chat/${targetThreadId}/messages/${messageId}/reaction`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reaction: nextReaction })
+          }
+        );
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: { message?: string } }
+            | null;
+          throw new Error(payload?.error?.message ?? "Failed to save reaction.");
+        }
+
+        const data = (await response.json().catch(() => ({}))) as {
+          reaction?: string | null;
+        };
+        updateMessagesForThread(targetThreadId, (existing) =>
+          existing.map((message) => {
+            if (message.id !== messageId) return message;
+            const nextMeta = { ...(message.meta ?? {}) } as Record<string, unknown>;
+            if (typeof data.reaction === "string" && data.reaction.trim().length > 0) {
+              nextMeta.reaction = data.reaction.trim();
+            } else {
+              delete nextMeta.reaction;
+            }
+            return { ...message, meta: nextMeta };
+          })
+        );
+      } catch (err) {
+        updateMessagesForThread(targetThreadId, (existing) =>
+          existing.map((message) => {
+            if (message.id !== messageId) return message;
+            const nextMeta = { ...(message.meta ?? {}) } as Record<string, unknown>;
+            if (typeof currentReaction === "string" && currentReaction.trim().length > 0) {
+              nextMeta.reaction = currentReaction;
+            } else {
+              delete nextMeta.reaction;
+            }
+            return { ...message, meta: nextMeta };
+          })
+        );
+        setError(err instanceof Error ? err.message : "Failed to save reaction.");
+      }
+    },
+    [updateMessagesForThread]
+  );
+
   return useMemo(
     () => ({
       threadId,
@@ -612,7 +697,8 @@ export function useChat(): UseChatResult {
       renameThread,
       deleteThread,
       promoteThread,
-      sendMessage
+      sendMessage,
+      reactToMessage
     }),
     [
       createThread,
@@ -625,6 +711,7 @@ export function useChat(): UseChatResult {
       messages,
       promoteThread,
       renameThread,
+      reactToMessage,
       selectThread,
       sendMessage,
       threadId,

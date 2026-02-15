@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { motion } from "framer-motion";
-import type { ChatMessage } from "@/hooks/use-chat";
+import { AnimatePresence, motion } from "framer-motion";
+import type { ChatMessage, MessageReaction } from "@/hooks/use-chat";
 
 type MessageItemProps = {
   message: ChatMessage;
+  onReact?: (threadId: string, messageId: string, reaction: MessageReaction) => Promise<void>;
 };
 
 type ContentPart =
@@ -47,6 +48,22 @@ type ToolCardGroup = {
   heading: string;
   cards: ToolCard[];
   footer?: string;
+};
+
+const REACTION_OPTIONS: Array<{ id: MessageReaction; emoji: string; label: string }> = [
+  { id: "thumbs_up", emoji: "👍", label: "Thumbs up" },
+  { id: "heart", emoji: "❤️", label: "Heart" },
+  { id: "angry", emoji: "😠", label: "Angry" },
+  { id: "sad", emoji: "😢", label: "Sad" },
+  { id: "brain", emoji: "🧠", label: "Summarize now" }
+];
+
+const REACTION_EMOJI_BY_ID: Record<MessageReaction, string> = {
+  thumbs_up: "👍",
+  heart: "❤️",
+  angry: "😠",
+  sad: "😢",
+  brain: "🧠"
 };
 
 const URL_PATTERN = /(https?:\/\/[^\s<>"`]+)/g;
@@ -636,9 +653,16 @@ function readAgentRouteMeta(message: ChatMessage): AgentRouteMeta | null {
   return null;
 }
 
-export function MessageItem({ message }: MessageItemProps) {
+export function MessageItem({ message, onReact }: MessageItemProps) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [pendingReaction, setPendingReaction] = useState<MessageReaction | null>(null);
+  const [reactionsOpen, setReactionsOpen] = useState(false);
+  const [burstReaction, setBurstReaction] = useState<MessageReaction | null>(null);
   const isUser = message.role === "user";
+  const activeReaction =
+    message.meta && typeof message.meta === "object"
+      ? ((message.meta as Record<string, unknown>).reaction as string | undefined)
+      : undefined;
   const normalizedAssistantContent =
     !isUser && readAgentTraceMeta(message)?.action === "google_calendar"
       ? normalizeGoogleCalendarContent(message.content || " ")
@@ -671,6 +695,21 @@ export function MessageItem({ message }: MessageItemProps) {
       }, 1500);
     } catch {
       setCopiedIndex(null);
+    }
+  };
+
+  const handleReactionClick = async (reaction: MessageReaction) => {
+    if (!onReact || message.isStreaming) return;
+    try {
+      setReactionsOpen(false);
+      setBurstReaction(reaction);
+      window.setTimeout(() => {
+        setBurstReaction((current) => (current === reaction ? null : current));
+      }, 220);
+      setPendingReaction(reaction);
+      await onReact(message.threadId, message.id, reaction);
+    } finally {
+      setPendingReaction(null);
     }
   };
 
@@ -800,6 +839,77 @@ export function MessageItem({ message }: MessageItemProps) {
             );
           })
         )}
+        {onReact ? (
+          <div className="pt-1">
+            <div className="flex items-center justify-start">
+              <button
+                type="button"
+                onClick={() => setReactionsOpen((prev) => !prev)}
+                disabled={Boolean(message.isStreaming)}
+                aria-label="Toggle reactions"
+                title="React to this message"
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${
+                  reactionsOpen || activeReaction
+                    ? "border-[rgb(var(--accent)/0.65)] bg-[rgb(var(--accent)/0.2)]"
+                    : "border-[rgb(var(--border)/0.72)] bg-[rgb(var(--panel)/0.55)] hover:bg-[rgb(var(--panel)/0.95)]"
+                }`}
+              >
+                {activeReaction &&
+                (activeReaction === "thumbs_up" ||
+                  activeReaction === "heart" ||
+                  activeReaction === "angry" ||
+                  activeReaction === "sad" ||
+                  activeReaction === "brain")
+                  ? REACTION_EMOJI_BY_ID[activeReaction]
+                  : "+"}
+              </button>
+            </div>
+            <AnimatePresence initial={false}>
+              {reactionsOpen ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="mt-2 flex flex-wrap items-center justify-start gap-1.5 sm:gap-2"
+                >
+                  {REACTION_OPTIONS.map((option) => {
+                    const selected = activeReaction === option.id;
+                    const pending = pendingReaction === option.id;
+                    return (
+                      <motion.button
+                        key={`${message.id}-reaction-${option.id}`}
+                        type="button"
+                        onClick={() => void handleReactionClick(option.id)}
+                        disabled={Boolean(message.isStreaming) || pendingReaction !== null}
+                        aria-label={option.label}
+                        title={option.label}
+                        whileHover={{ y: -2, scale: 1.07 }}
+                        whileTap={{ scale: 0.92 }}
+                        animate={
+                          burstReaction === option.id
+                            ? { scale: [1, 1.14, 1] }
+                            : { scale: 1 }
+                        }
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border px-2 text-base transition md:h-8 md:min-w-8 ${
+                          selected
+                            ? "border-[rgb(var(--accent)/0.7)] bg-[rgb(var(--accent)/0.25)] shadow-[0_6px_16px_rgb(2_132_199/0.25)]"
+                            : "border-[rgb(var(--border)/0.7)] bg-[rgb(var(--panel)/0.55)] hover:bg-[rgb(var(--panel)/0.95)]"
+                        } ${pending ? "opacity-60" : ""}`}
+                      >
+                        {option.emoji}
+                      </motion.button>
+                    );
+                  })}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+            {activeReaction ? (
+              <p className="ui-text-muted mt-1 text-[11px]">Reaction saved</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

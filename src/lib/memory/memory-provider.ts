@@ -23,6 +23,11 @@ export interface MemoryProvider {
     text: string,
     meta?: Record<string, unknown>
   ): Promise<string>;
+  setEventReaction?(
+    threadId: string,
+    eventId: string,
+    reaction: "thumbs_up" | "heart" | "angry" | "sad" | "brain" | null
+  ): Promise<{ reaction: string | null; summaryUpdated: boolean }>;
   getRecentEvents(threadId: string, limit?: number): Promise<UIMessage[]>;
   listThreads?(userId: string, limit?: number): Promise<ThreadRecord[]>;
   renameThread?(threadId: string, title: string): Promise<void>;
