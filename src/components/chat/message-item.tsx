@@ -31,6 +31,9 @@ type AgentTraceMeta = {
     toolName: string;
     success: boolean;
     reason: string;
+    executionStatus: "completed" | "action_required" | "failed";
+    query?: string;
+    capabilityLabel?: string;
   }>;
 };
 
@@ -54,6 +57,15 @@ type ToolCardGroup = {
   heading: string;
   cards: ToolCard[];
   footer?: string;
+};
+
+type OrchestrationStepView = {
+  action: string;
+  label: string;
+  status: "completed" | "action_required" | "failed";
+  query: string;
+  result: string;
+  details: string;
 };
 
 const REACTION_OPTIONS: Array<{ id: MessageReaction; emoji: string; label: string }> = [
@@ -369,18 +381,34 @@ function parseGmailDraftConfirmationCard(content: string): ToolCardGroup | null 
   }
   const fields: ToolCardField[] = [];
   let footer = "";
+  let lastField: ToolCardField | null = null;
   for (const rawLine of lines.slice(1)) {
     const line = rawLine.trim();
-    if (!line) continue;
+    if (!line) {
+      if (lastField && lastField.label.trim().toLowerCase() === "body") {
+        lastField.value = `${lastField.value}\n`;
+      }
+      continue;
+    }
     if (/^reply with /i.test(line)) {
       footer = line;
       continue;
     }
     const bullet = line.match(/^\-\s*([^:]{2,30}):\s*(.+)$/);
-    if (!bullet) continue;
-    const label = bullet[1].trim();
-    if (label.toLowerCase() === "draft id") continue;
-    fields.push({ label, value: bullet[2].trim() });
+    if (bullet) {
+      const label = bullet[1].trim();
+      if (label.toLowerCase() === "draft id") continue;
+      const field = { label, value: bullet[2].trim() };
+      fields.push(field);
+      lastField = field;
+      continue;
+    }
+    if (lastField) {
+      const lastLabel = lastField.label.trim().toLowerCase();
+      if (lastLabel === "body" || lastLabel === "preview" || lastLabel === "message") {
+        lastField.value = `${lastField.value}\n${line}`;
+      }
+    }
   }
   if (fields.length === 0) return null;
   return {
@@ -549,6 +577,114 @@ function toTitleCase(raw: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function stepLabelFromAction(action: string): string {
+  if (action === "google_gmail") return "Gmail";
+  if (action === "google_calendar") return "Google Calendar";
+  if (action === "google_drive") return "Google Drive";
+  if (action === "web_search") return "Web Search";
+  return toTitleCase(action);
+}
+
+function parseStepRowsFromOrchestrationText(
+  content: string
+): Record<string, { query: string; result: string }> {
+  const out: Record<string, { query: string; result: string }> = {};
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const headerMatch = lines[i].match(/^\s*\d+\.\s+(.+?):\s+(.+)$/);
+    if (!headerMatch) continue;
+    const label = headerMatch[1].trim().toLowerCase();
+    let query = "";
+    let result = "";
+    let j = i + 1;
+    while (j < lines.length) {
+      const line = lines[j].trim();
+      if (!line) {
+        j += 1;
+        continue;
+      }
+      if (/^\d+\.\s+.+:\s+.+$/.test(line) || /^Detailed Outputs$/i.test(line)) {
+        break;
+      }
+      if (line.toLowerCase().startsWith("query:")) {
+        query = line.replace(/^query:\s*/i, "").trim();
+      } else if (line.toLowerCase().startsWith("result:")) {
+        result = line.replace(/^result:\s*/i, "").trim();
+      }
+      j += 1;
+    }
+    out[label] = { query, result };
+    i = j - 1;
+  }
+  return out;
+}
+
+function parseDetailedOutputsByLabel(content: string, labels: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().toLowerCase() === "detailed outputs");
+  if (start < 0) return out;
+  const normalizedLabels = labels.map((label) => label.trim());
+  let currentLabel = "";
+  const buffer: string[] = [];
+  const commit = () => {
+    if (!currentLabel) return;
+    out[currentLabel.toLowerCase()] = buffer.join("\n").trim();
+    buffer.length = 0;
+  };
+
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      if (currentLabel) buffer.push("");
+      continue;
+    }
+    const matchedLabel = normalizedLabels.find(
+      (label) => trimmed.toLowerCase() === label.toLowerCase()
+    );
+    if (matchedLabel) {
+      commit();
+      currentLabel = matchedLabel;
+      continue;
+    }
+    if (currentLabel) buffer.push(trimmed);
+  }
+  commit();
+  return out;
+}
+
+function extractDraftSection(value: string, marker: string): string {
+  const raw = (value || "").trim();
+  if (!raw) return raw;
+  const lowered = raw.toLowerCase();
+  const markerLower = marker.toLowerCase();
+  const index = lowered.indexOf(markerLower);
+  if (index < 0) return raw;
+  return raw.slice(index).trim();
+}
+
+function buildOrchestrationStepViews(
+  content: string,
+  steps: NonNullable<AgentTraceMeta["steps"]>
+): OrchestrationStepView[] {
+  const labels = steps.map((step) => step.capabilityLabel?.trim() || stepLabelFromAction(step.action));
+  const rowByLabel = parseStepRowsFromOrchestrationText(content);
+  const detailsByLabel = parseDetailedOutputsByLabel(content, labels);
+  return steps.map((step) => {
+    const label = step.capabilityLabel?.trim() || stepLabelFromAction(step.action);
+    const row = rowByLabel[label.toLowerCase()];
+    return {
+      action: step.action,
+      label,
+      status: step.executionStatus,
+      query: step.query?.trim() || row?.query || "",
+      result: row?.result || "",
+      details: detailsByLabel[label.toLowerCase()] || ""
+    };
+  });
+}
+
 function isExpandableToolCardFieldValue(value: string): boolean {
   if (!value) return false;
   const lines = value.split(/\r?\n/).filter((line) => line.trim().length > 0);
@@ -608,19 +744,45 @@ function readAgentTraceMeta(message: ChatMessage): AgentTraceMeta | null {
           typeof step.success === "boolean" ? step.success : null;
         const reasonValue =
           typeof step.reason === "string" ? step.reason.trim() : "";
+        const queryValue = typeof step.query === "string" ? step.query.trim() : "";
+        const capabilityLabelValue =
+          typeof step.capabilityLabel === "string" ? step.capabilityLabel.trim() : "";
+        const executionStatusCandidate =
+          typeof step.executionStatus === "string"
+            ? step.executionStatus
+            : typeof step.execution_status === "string"
+              ? step.execution_status
+              : "";
+        const executionStatusRaw = executionStatusCandidate.trim().toLowerCase();
+        const executionStatus =
+          executionStatusRaw === "completed" ||
+          executionStatusRaw === "action_required" ||
+          executionStatusRaw === "failed"
+            ? executionStatusRaw
+            : successValue
+              ? "completed"
+              : "failed";
         if (!actionValue || !toolNameValue || successValue === null) return null;
         return {
           action: actionValue,
           toolName: toolNameValue,
           success: successValue,
-          reason: reasonValue
+          reason: reasonValue,
+          executionStatus,
+          ...(queryValue ? { query: queryValue } : {}),
+          ...(capabilityLabelValue ? { capabilityLabel: capabilityLabelValue } : {})
         };
       })
       .filter(
-        (
-          item
-        ): item is { action: string; toolName: string; success: boolean; reason: string } =>
-          item !== null
+        (item): item is {
+          action: string;
+          toolName: string;
+          success: boolean;
+          reason: string;
+          executionStatus: "completed" | "action_required" | "failed";
+          query?: string;
+          capabilityLabel?: string;
+        } => item !== null
       );
 
     return {
@@ -744,6 +906,23 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
       )
     : [];
   const isWebSearchRouted = agentTrace?.action === "web_search";
+  const orchestrationSteps =
+    !isUser && agentTrace?.action === "orchestration" && agentTrace.steps && agentTrace.steps.length > 0
+      ? buildOrchestrationStepViews(normalizedAssistantContent, agentTrace.steps)
+      : [];
+  const hasPendingGmail = orchestrationSteps.some(
+    (step) =>
+      step.action === "google_gmail" &&
+      (step.status === "action_required" ||
+        /i am ready to send this draft:|needs confirmation before sending/i.test(step.details || ""))
+  );
+  const hasPendingCalendar = orchestrationSteps.some(
+    (step) =>
+      step.action === "google_calendar" &&
+      (step.status === "action_required" ||
+        /i have this draft event:|needs confirmation before creating/i.test(step.details || ""))
+  );
+  const hasPendingGmailAndCalendar = hasPendingGmail && hasPendingCalendar;
   const toolCardGroup =
     !isUser && agentTrace
       ? parseToolCardGroup(agentTrace.action, normalizedAssistantContent)
@@ -823,24 +1002,94 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
           ))}
         </div>
       ) : null}
-      {agentTrace?.action === "orchestration" && agentTrace.steps && agentTrace.steps.length > 0 ? (
-        <div className="mb-3 rounded-2xl border border-[rgb(var(--border)/0.65)] bg-[rgb(var(--panel)/0.45)] px-3 py-2">
-          <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
-            Pipeline Steps
-          </p>
-          <div className="mt-2 space-y-1.5">
-            {agentTrace.steps.map((step, index) => (
-              <p key={`${message.id}-step-${index}`} className="text-[13px] leading-6">
-                <span className="font-semibold">{index + 1}. {toTitleCase(step.action)}</span>
-                {" - "}
-                {step.success ? "Completed" : "Failed"}
-              </p>
-            ))}
-          </div>
-        </div>
-      ) : null}
       <div className="space-y-4">
-        {toolCardGroup ? (
+        {agentTrace?.action === "orchestration" && orchestrationSteps.length > 0 ? (
+          <div className="space-y-3">
+            {orchestrationSteps.map((step, index) => {
+              const gmailDraftBlock = extractDraftSection(
+                step.details,
+                "I am ready to send this draft:"
+              );
+              const calendarDraftBlock = extractDraftSection(
+                step.details,
+                "I have this draft event:"
+              );
+              const detailCard =
+                step.action === "google_gmail"
+                  ? parseGmailDraftConfirmationCard(gmailDraftBlock)
+                  : step.action === "google_calendar"
+                    ? parseCalendarDraftCard(calendarDraftBlock)
+                    : null;
+              return (
+                <article
+                  key={`${message.id}-orchestration-step-${index}`}
+                  className="ui-panel rounded-2xl border border-[rgb(var(--border)/0.75)] p-4 shadow-[0_14px_28px_rgb(8_47_73/0.12)]"
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-md ui-panel ui-panel-strong">
+                      <ToolCardIcon action={step.action} />
+                    </span>
+                    <h4 className="text-[18px] font-semibold leading-7 text-[rgb(var(--foreground)/1)]">
+                      {step.label}
+                    </h4>
+                  </div>
+                  {step.query ? (
+                    <div className="ui-panel ui-panel-strong rounded-xl px-3 py-2">
+                      <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
+                        Request
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-[15px] leading-7">
+                        {renderTextWithLinks(step.query)}
+                      </p>
+                    </div>
+                  ) : null}
+                  {step.result ? (
+                    <p className="mt-3 text-[15px] leading-7 text-[rgb(var(--foreground)/0.92)]">
+                      {renderTextWithLinks(step.result)}
+                    </p>
+                  ) : null}
+                  {detailCard && detailCard.cards.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {detailCard.cards[0].fields.map((field, fieldIndex) => (
+                        <div
+                          key={`${message.id}-orchestration-step-${index}-field-${fieldIndex}`}
+                          className="ui-panel ui-panel-strong rounded-xl px-3 py-2"
+                        >
+                          <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
+                            {field.label}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-[16px] leading-7">
+                            {renderTextWithLinks(field.value)}
+                          </p>
+                        </div>
+                      ))}
+                      {detailCard.footer ? (
+                        <p className="text-[14px] leading-6 text-[rgb(var(--foreground)/0.74)]">
+                          {detailCard.footer}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : step.details ? (
+                    <p className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[rgb(var(--foreground)/0.75)]">
+                      {renderTextWithLinks(step.details)}
+                    </p>
+                  ) : null}
+                </article>
+              );
+            })}
+            {hasPendingGmailAndCalendar ? (
+              <article className="ui-panel rounded-2xl border border-[rgb(var(--accent)/0.45)] bg-[rgb(var(--accent)/0.12)] px-4 py-3 shadow-[0_12px_28px_rgb(8_47_73/0.12)]">
+                <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
+                  Confirmation
+                </p>
+                <p className="mt-1 text-[15px] leading-7 text-[rgb(var(--foreground)/0.95)]">
+                  Reply with <span className="font-semibold">confirm</span> to send the email and add
+                  the calendar event, or <span className="font-semibold">cancel</span> to stop both.
+                </p>
+              </article>
+            ) : null}
+          </div>
+        ) : toolCardGroup ? (
           <div className="space-y-3">
             <p className="ui-accent-soft text-[15px] font-semibold uppercase tracking-wide">
               {toolCardGroup.heading}

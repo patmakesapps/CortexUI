@@ -499,18 +499,51 @@ function buildAgentTraceHeader(payload: JsonRecord): string | null {
 
 function inferPipelineStepsFromPayload(
   payload: JsonRecord
-): Array<{ action: string; toolName: string; success: boolean; reason: string }> {
+): Array<{
+  action: string;
+  toolName: string;
+  success: boolean;
+  reason: string;
+  executionStatus: "completed" | "action_required" | "failed";
+  query: string;
+  capabilityLabel: string;
+}> {
   const raw = payload.tool_pipeline;
   if (!Array.isArray(raw)) return [];
-  const out: Array<{ action: string; toolName: string; success: boolean; reason: string }> = [];
+  const out: Array<{
+    action: string;
+    toolName: string;
+    success: boolean;
+    reason: string;
+    executionStatus: "completed" | "action_required" | "failed";
+    query: string;
+    capabilityLabel: string;
+  }> = [];
   for (const item of raw) {
     if (!isRecord(item)) continue;
     const action = typeof item.action === "string" ? item.action.trim() : "";
     const toolName = typeof item.tool_name === "string" ? item.tool_name.trim() : "";
     const success = typeof item.success === "boolean" ? item.success : null;
     const reason = typeof item.reason === "string" ? item.reason.trim() : "";
+    const query = typeof item.query === "string" ? item.query.trim() : "";
+    const capabilityLabel =
+      typeof item.capability_label === "string" && item.capability_label.trim().length > 0
+        ? item.capability_label.trim()
+        : action
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+    const executionStatusRaw =
+      typeof item.execution_status === "string" ? item.execution_status.trim().toLowerCase() : "";
+    const executionStatus =
+      executionStatusRaw === "completed" ||
+      executionStatusRaw === "action_required" ||
+      executionStatusRaw === "failed"
+        ? executionStatusRaw
+        : success
+          ? "completed"
+          : "failed";
     if (!action || !toolName || success === null) continue;
-    out.push({ action, toolName, success, reason });
+    out.push({ action, toolName, success, reason, executionStatus, query, capabilityLabel });
   }
   return out;
 }
