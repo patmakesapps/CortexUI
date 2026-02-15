@@ -112,6 +112,107 @@ function renderTextWithLinks(value: string) {
   return nodes.length > 0 ? nodes : value;
 }
 
+function renderStructuredText(value: string, keyPrefix: string): ReactNode {
+  const normalized = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/^\s*\*\s+/gm, "• ");
+  const lines = normalized.split(/\r?\n/);
+  const nodes: ReactNode[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const next = i + 1 < lines.length ? lines[i + 1] : "";
+    const trimmed = line.trim();
+    const nextTrimmed = next.trim();
+
+    // Header pattern:
+    // Title
+    // -----
+    if (
+      trimmed.length > 0 &&
+      /^[\-]{3,}$/.test(nextTrimmed)
+    ) {
+      nodes.push(
+        <div key={`${keyPrefix}-h-${i}`} className="mt-1">
+          <p className="ui-accent-soft text-[15px] font-semibold tracking-wide">{trimmed}</p>
+          <div className="mt-1 h-px w-full bg-[rgb(var(--border)/0.55)]" />
+        </div>
+      );
+      i += 2;
+      continue;
+    }
+
+    // Uppercase topic headings like "MASTER MEMORY"
+    if (/^[A-Z][A-Z\s]{4,}$/.test(trimmed)) {
+      nodes.push(
+        <div key={`${keyPrefix}-topic-${i}`} className="mt-2">
+          <p className="ui-accent-soft text-[18px] font-semibold tracking-[0.02em]">{trimmed}</p>
+          <div className="mt-1 h-px w-full bg-[rgb(var(--border)/0.48)]" />
+        </div>
+      );
+      i += 1;
+      continue;
+    }
+
+    // Title case section headers ending with ":".
+    if (/^[A-Z][\w\s'()/,-]{2,}:$/.test(trimmed)) {
+      nodes.push(
+        <div key={`${keyPrefix}-section-${i}`} className="mt-2">
+          <p className="ui-accent-soft text-[15px] font-semibold tracking-wide">
+            {trimmed.replace(/:\s*$/, "")}
+          </p>
+          <div className="mt-1 h-px w-full bg-[rgb(var(--border)/0.42)]" />
+        </div>
+      );
+      i += 1;
+      continue;
+    }
+
+    if (trimmed.length === 0) {
+      nodes.push(<div key={`${keyPrefix}-sp-${i}`} className="h-1" />);
+      i += 1;
+      continue;
+    }
+
+    // Polished list rows
+    const numbered = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    if (numbered) {
+      nodes.push(
+        <div key={`${keyPrefix}-li-${i}`} className="rounded-lg px-1 py-1.5">
+          <p className="whitespace-pre-wrap font-medium">
+            <span className="ui-accent-soft mr-2">{numbered[1]}.</span>
+            {renderTextWithLinks(numbered[2])}
+          </p>
+        </div>
+      );
+      i += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("• ")) {
+      nodes.push(
+        <div key={`${keyPrefix}-bullet-${i}`} className="rounded-lg px-1 py-1">
+          <p className="whitespace-pre-wrap">
+            <span className="ui-accent-soft mr-2">•</span>
+            {renderTextWithLinks(trimmed.slice(2))}
+          </p>
+        </div>
+      );
+      i += 1;
+      continue;
+    }
+
+    nodes.push(
+      <p key={`${keyPrefix}-p-${i}`} className="whitespace-pre-wrap">
+        {renderTextWithLinks(line)}
+      </p>
+    );
+    i += 1;
+  }
+  return <div className="space-y-1">{nodes}</div>;
+}
+
 function parseContent(content: string): ContentPart[] {
   const parts: ContentPart[] = [];
   const lines = content.split(/\r?\n/);
@@ -671,9 +772,9 @@ export function MessageItem({ message }: MessageItemProps) {
                 return null;
               }
               return (
-                <p key={`${message.id}-text-${index}`} className="whitespace-pre-wrap">
-                  {renderTextWithLinks(part.value)}
-                </p>
+                <div key={`${message.id}-text-${index}`}>
+                  {renderStructuredText(part.value, `${message.id}-text-${index}`)}
+                </div>
               );
             }
 
