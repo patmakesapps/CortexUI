@@ -21,6 +21,12 @@ type ActivityState = {
   tone: ActivityTone;
 };
 
+type AgentTraceStep = {
+  action: string;
+  executionStatus: "completed" | "action_required" | "failed";
+  capabilityLabel?: string;
+};
+
 function readAgentTraceAction(message: ChatMessage | null): string | null {
   if (!message || !message.meta || typeof message.meta !== "object") return null;
   const raw = (message.meta as Record<string, unknown>).agentTrace;
@@ -29,6 +35,79 @@ function readAgentTraceAction(message: ChatMessage | null): string | null {
   return typeof action === "string" && action.trim().length > 0
     ? action.trim().toLowerCase()
     : null;
+}
+
+function readAgentTraceReason(message: ChatMessage | null): string | null {
+  if (!message || !message.meta || typeof message.meta !== "object") return null;
+  const raw = (message.meta as Record<string, unknown>).agentTrace;
+  if (!raw || typeof raw !== "object") return null;
+  const reason = (raw as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason.trim().length > 0 ? reason.trim() : null;
+}
+
+function readAgentTraceSteps(message: ChatMessage | null): AgentTraceStep[] {
+  if (!message || !message.meta || typeof message.meta !== "object") return [];
+  const raw = (message.meta as Record<string, unknown>).agentTrace;
+  if (!raw || typeof raw !== "object") return [];
+  const stepsRaw = (raw as Record<string, unknown>).steps;
+  if (!Array.isArray(stepsRaw)) return [];
+  return stepsRaw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const action = typeof row.action === "string" ? row.action.trim().toLowerCase() : "";
+      const capabilityLabel =
+        typeof row.capabilityLabel === "string" && row.capabilityLabel.trim().length > 0
+          ? row.capabilityLabel.trim()
+          : undefined;
+      const executionStatusRaw =
+        typeof row.executionStatus === "string" ? row.executionStatus.trim().toLowerCase() : "";
+      const executionStatus =
+        executionStatusRaw === "completed" ||
+        executionStatusRaw === "action_required" ||
+        executionStatusRaw === "failed"
+          ? executionStatusRaw
+          : null;
+      if (!action || !executionStatus) return null;
+      return { action, capabilityLabel, executionStatus } satisfies AgentTraceStep;
+    })
+    .filter((item): item is AgentTraceStep => item !== null);
+}
+
+function titleFromAction(action: string): string {
+  const normalized = action.trim().toLowerCase();
+  if (normalized === "google_gmail") return "Gmail";
+  if (normalized === "google_calendar") return "Google Calendar";
+  if (normalized === "google_drive") return "Google Drive";
+  if (normalized === "web_search") return "Web Search";
+  if (normalized === "orchestration") return "Orchestration";
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function humanizeDecisionReason(reason: string | null): string | null {
+  if (!reason) return null;
+  const normalized = reason.trim().toLowerCase();
+  const exact: Record<string, string> = {
+    llm_only_tool_intent_hint_fallback:
+      "Detected tool intent and selected the best matching tool from intent hints.",
+    llm_only_tool_intent_unresolved:
+      "Detected tool intent, but the model could not map it to a safe executable tool action.",
+    llm_only_no_actionable_plan:
+      "Model did not return an actionable tool plan for this turn.",
+    web_search_followup: "Continuing the prior web search context.",
+    calendar_confirmation_followup: "Applying your follow-up to the pending calendar draft.",
+    gmail_send_confirmation_followup: "Applying your confirmation to the pending Gmail draft."
+  };
+  if (exact[normalized]) return exact[normalized];
+  if (normalized.startsWith("matched_")) {
+    return `Intent match: ${normalized.replace(/^matched_/, "").replace(/_/g, " ")}.`;
+  }
+  if (normalized.startsWith("verification_override:")) {
+    return "Verification policy required live web verification before answering.";
+  }
+  return normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function readAgentRoute(
@@ -48,69 +127,6 @@ function readAgentRoute(
       ? { warning: warningRaw.trim() }
       : {})
   };
-}
-
-function inferActionFromUserText(text: string): string | null {
-  const lowered = text.trim().toLowerCase();
-  if (!lowered) return null;
-  const intents = [
-    /\b(gmail|email|emails|inbox|draft|send email|send an email)\b/.test(lowered),
-    /\b(calendar|meeting|schedule|appointment|availability|event)\b/.test(lowered),
-    /\b(drive|folder|file|doc|document|spreadsheet|slides)\b/.test(lowered),
-    /\b(search|look up|lookup|latest|news|web|online|find on the internet|google it)\b/.test(
-      lowered
-    )
-  ].filter(Boolean).length;
-  if (intents >= 2) {
-    return "orchestration";
-  }
-  if (/\b(gmail|email|emails|inbox|draft|send email|send an email)\b/.test(lowered)) {
-    return "google_gmail";
-  }
-  if (/\b(calendar|meeting|schedule|appointment|availability|event)\b/.test(lowered)) {
-    return "google_calendar";
-  }
-  if (/\b(drive|folder|file|doc|document|spreadsheet|slides)\b/.test(lowered)) {
-    return "google_drive";
-  }
-  if (
-    /\b(search|look up|lookup|latest|news|web|online|find on the internet|google it)\b/.test(
-      lowered
-    )
-  ) {
-    return "web_search";
-  }
-  return null;
-}
-
-function inferCalendarModeFromUserText(text: string): "create_or_update" | "check" {
-  const lowered = text.trim().toLowerCase();
-  if (!lowered) return "check";
-  if (
-    /\b(add|create|schedule|book|set up|put|move|reschedule|update|change)\b/.test(lowered) &&
-    /\b(calendar|meeting|event|appointment)\b/.test(lowered)
-  ) {
-    return "create_or_update";
-  }
-  if (/\b(add event|create event|schedule meeting|reschedule)\b/.test(lowered)) {
-    return "create_or_update";
-  }
-  return "check";
-}
-
-function inferGmailModeFromUserText(text: string): "send_or_draft" | "check" {
-  const lowered = text.trim().toLowerCase();
-  if (!lowered) return "check";
-  if (
-    /\b(send|email|mail|draft|compose|reply|respond|forward|message)\b/.test(lowered) &&
-    /\b(to|about|subject|cc|bcc|follow up|follow-up)\b/.test(lowered)
-  ) {
-    return "send_or_draft";
-  }
-  if (/\b(send an email|write an email|draft an email|compose email|reply to)\b/.test(lowered)) {
-    return "send_or_draft";
-  }
-  return "check";
 }
 
 export function MessageList({ messages, isStreaming, onReactToMessage }: MessageListProps) {
@@ -157,12 +173,9 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
     null;
   const route = readAgentRoute(activeAssistant);
   const traceAction = readAgentTraceAction(activeAssistant);
-  const latestUserText =
-    [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
-  const inferredAction = inferActionFromUserText(latestUserText);
-  const calendarMode = inferCalendarModeFromUserText(latestUserText);
-  const gmailMode = inferGmailModeFromUserText(latestUserText);
-  const effectiveAction = traceAction ?? inferredAction;
+  const traceReason = readAgentTraceReason(activeAssistant);
+  const traceSteps = readAgentTraceSteps(activeAssistant);
+  const effectiveAction = traceAction;
   const elapsedMs =
     isStreaming && streamStartedAtRef.current
       ? Math.max(0, Date.now() + streamTick * 0 - streamStartedAtRef.current)
@@ -175,6 +188,12 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
         label:
           route.warning ??
           "Agent routing is unavailable for this turn. Continuing in direct memory mode.",
+        tone: "warning"
+      };
+    }
+    if (route?.mode === "memory_direct") {
+      return {
+        label: "Direct memory mode active (agent tools not engaged for this turn).",
         tone: "warning"
       };
     }
@@ -192,17 +211,6 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
       };
     }
     if (effectiveAction === "google_gmail") {
-      if (gmailMode === "send_or_draft") {
-        return {
-          label:
-            phase === 0
-              ? "Opening Gmail..."
-              : phase === 1
-                ? "Drafting your email..."
-                : "Preparing send confirmation...",
-          tone: "active"
-        };
-      }
       return {
         label:
           phase === 0
@@ -214,17 +222,6 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
       };
     }
     if (effectiveAction === "google_calendar") {
-      if (calendarMode === "create_or_update") {
-        return {
-          label:
-            phase === 0
-              ? "Opening Google Calendar..."
-              : phase === 1
-                ? "Drafting your calendar event details..."
-                : "Adding to your calendar...",
-          tone: "active"
-        };
-      }
       return {
         label:
           phase === 0
@@ -247,19 +244,36 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
       };
     }
     if (effectiveAction === "orchestration") {
+      const firstPendingStep = traceSteps.find(
+        (step) => step.executionStatus === "action_required" || step.executionStatus === "failed"
+      );
+      const activeStep = firstPendingStep ?? traceSteps[0] ?? null;
+      const activeStepLabel = activeStep
+        ? activeStep.capabilityLabel || titleFromAction(activeStep.action)
+        : "tool";
       return {
         label:
           phase === 0
-            ? "Planning orchestration steps (Gmail, Drive, Calendar, Web)..."
+            ? `Planning steps from model decision... (${traceSteps.length || 1} step${traceSteps.length === 1 ? "" : "s"})`
             : phase === 1
-              ? "Executing tool steps and collecting results..."
+              ? `Running ${activeStepLabel} and collecting results...`
               : "Synthesizing final response from step outputs...",
+        tone: "active"
+      };
+    }
+    if (traceReason) {
+      const readableReason = humanizeDecisionReason(traceReason);
+      return {
+        label:
+          hasAssistantContent
+            ? "Preparing response..."
+            : `Model decision: ${readableReason ?? traceReason}`,
         tone: "active"
       };
     }
     if (route?.mode === "agent") {
       return {
-        label: hasAssistantContent ? "Preparing response..." : "Understanding your request and gathering context...",
+        label: hasAssistantContent ? "Preparing response..." : "Waiting for model decision...",
         tone: "active"
       };
     }

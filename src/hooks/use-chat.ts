@@ -58,6 +58,9 @@ type AgentTraceMeta = {
     toolName: string;
     success: boolean;
     reason: string;
+    executionStatus: "completed" | "action_required" | "failed";
+    query?: string;
+    capabilityLabel?: string;
   }>;
 };
 
@@ -103,13 +106,40 @@ function parseAgentTraceMeta(headers: Headers): AgentTraceMeta | null {
         const toolName = typeof row.toolName === "string" ? row.toolName.trim() : "";
         const success = typeof row.success === "boolean" ? row.success : null;
         const reason = typeof row.reason === "string" ? row.reason.trim() : "";
+        const query = typeof row.query === "string" ? row.query.trim() : "";
+        const capabilityLabel =
+          typeof row.capabilityLabel === "string" ? row.capabilityLabel.trim() : "";
+        const executionStatusRaw =
+          typeof row.executionStatus === "string" ? row.executionStatus.trim().toLowerCase() : "";
+        const executionStatus =
+          executionStatusRaw === "completed" ||
+          executionStatusRaw === "action_required" ||
+          executionStatusRaw === "failed"
+            ? executionStatusRaw
+            : success
+              ? "completed"
+              : "failed";
         if (!action || !toolName || success === null) return null;
-        return { action, toolName, success, reason };
+        return {
+          action,
+          toolName,
+          success,
+          reason,
+          executionStatus,
+          ...(query ? { query } : {}),
+          ...(capabilityLabel ? { capabilityLabel } : {})
+        };
       })
       .filter(
-        (
-          item
-        ): item is { action: string; toolName: string; success: boolean; reason: string } =>
+        (item): item is {
+          action: string;
+          toolName: string;
+          success: boolean;
+          reason: string;
+          executionStatus: "completed" | "action_required" | "failed";
+          query?: string;
+          capabilityLabel?: string;
+        } =>
           item !== null
       );
 
@@ -424,19 +454,10 @@ export function useChat(): UseChatResult {
         }
 
         setThreads(listedThreads);
-        const firstId = listedThreads[0]?.id ?? null;
-        activeThreadRef.current = firstId;
-        setThreadId(firstId);
-        if (firstId) {
-          try {
-            await loadThreadMessages(firstId, false);
-          } catch (err) {
-            setMessages([]);
-            setError(err instanceof Error ? err.message : "Could not load this chat.");
-          }
-        } else {
-          setMessages([]);
-        }
+        // Always open to a fresh chat context by default.
+        activeThreadRef.current = null;
+        setThreadId(null);
+        setMessages([]);
       } catch (err) {
         setThreadId(null);
         setThreads([]);
@@ -448,7 +469,7 @@ export function useChat(): UseChatResult {
     };
 
     void bootstrap();
-  }, [loadThreadMessages]);
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {

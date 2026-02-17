@@ -577,6 +577,28 @@ function toTitleCase(raw: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function humanizeDecisionReason(reason: string): string {
+  const normalized = (reason || "").trim().toLowerCase();
+  const exact: Record<string, string> = {
+    llm_only_tool_intent_hint_fallback:
+      "Detected tool intent and selected the best matching tool action.",
+    llm_only_tool_intent_unresolved:
+      "Detected tool intent, but no safe executable tool action was found.",
+    llm_only_no_actionable_plan: "Model did not return an actionable tool plan.",
+    web_search_followup: "Continuing the prior web search context.",
+    calendar_confirmation_followup: "Applying your follow-up to the pending calendar draft.",
+    gmail_send_confirmation_followup: "Applying your confirmation to the pending Gmail draft."
+  };
+  if (exact[normalized]) return exact[normalized];
+  if (normalized.startsWith("matched_")) {
+    return `Intent match: ${normalized.replace(/^matched_/, "").replace(/_/g, " ")}.`;
+  }
+  if (normalized.startsWith("verification_override:")) {
+    return "Verification policy required live web verification before answering.";
+  }
+  return normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function stepLabelFromAction(action: string): string {
   if (action === "google_gmail") return "Gmail";
   if (action === "google_calendar") return "Google Calendar";
@@ -974,6 +996,11 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
           <p className="font-semibold tracking-wide text-amber-900">Agent fallback</p>
           <p>{agentRoute.warning ?? "Agentic tools were unavailable. This reply used direct memory mode."}</p>
         </div>
+      ) : agentRoute?.mode === "memory_direct" ? (
+        <div className="mb-3 rounded-2xl border border-amber-400/70 bg-amber-100/90 px-3 py-2 text-[12px] leading-5 text-amber-900 shadow-[0_10px_24px_rgb(120_53_15/0.18)]">
+          <p className="font-semibold tracking-wide text-amber-900">Direct memory mode</p>
+          <p>Agent tools were not active for this turn. No Gmail/Drive/Calendar/Web tool execution occurred.</p>
+        </div>
       ) : agentTrace && !isChatRouted && isWebSearchRouted ? (
         <div className="mb-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-gradient-to-r from-[rgb(var(--accent)/0.2)] via-[rgb(var(--accent)/0.08)] to-transparent px-3 py-2 text-[12px] leading-5 text-[rgb(var(--foreground)/0.9)] shadow-[0_14px_30px_rgb(8_47_73/0.25)] backdrop-blur-sm">
           <p className="ui-accent-text font-semibold tracking-wide">Agentic behavior active</p>
@@ -985,21 +1012,28 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
         </div>
       ) : null}
       {agentTrace && !isChatRouted ? (
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="ui-badge-info rounded-full px-2.5 py-0.5 font-semibold uppercase tracking-wide">
-            Agent Mode
-          </span>
-          <span className="ui-badge-neutral rounded-full px-2.5 py-0.5 font-semibold">
-            {normalizedAction}
-          </span>
-          {visibleCapabilities.map((capability) => (
-            <span
-              key={`${message.id}-${capability.id}`}
-              className="ui-badge-success rounded-full px-2.5 py-0.5 font-semibold"
-            >
-              {capability.label}
+        <div className="mb-2 space-y-1">
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="ui-badge-info rounded-full px-2.5 py-0.5 font-semibold uppercase tracking-wide">
+              Agent Mode
             </span>
-          ))}
+            <span className="ui-badge-neutral rounded-full px-2.5 py-0.5 font-semibold">
+              {normalizedAction}
+            </span>
+            {visibleCapabilities.map((capability) => (
+              <span
+                key={`${message.id}-${capability.id}`}
+                className="ui-badge-success rounded-full px-2.5 py-0.5 font-semibold"
+              >
+                {capability.label}
+              </span>
+            ))}
+          </div>
+          {agentTrace.reason ? (
+            <p className="text-[12px] text-[rgb(var(--foreground)/0.7)]">
+              Decision: {humanizeDecisionReason(agentTrace.reason)}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div className="space-y-4">

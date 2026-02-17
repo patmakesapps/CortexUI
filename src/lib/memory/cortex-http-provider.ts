@@ -148,20 +148,6 @@ export class CortexHttpProvider implements MemoryProvider {
       throw new MemoryApiError(message, response.status);
     }
 
-    if (routeMode === "agent_fallback" && isToolIntent(text)) {
-      const outHeaders = new Headers({
-        "Content-Type": "text/plain; charset=utf-8"
-      });
-      outHeaders.set("x-cortex-route-mode", routeMode);
-      if (routeWarning) {
-        outHeaders.set("x-cortex-route-warning", sanitizeHeaderValue(routeWarning));
-      }
-      return new Response(buildToolFallbackMessage(text), {
-        status: 200,
-        headers: outHeaders
-      });
-    }
-
     if (useAgent && isJsonResponse(response)) {
       const payload = (await response.json().catch(() => ({}))) as JsonRecord;
       const assistantText =
@@ -439,38 +425,6 @@ function isJsonResponse(response: Response): boolean {
 
 function shouldFallbackToBaseFromAgent(status: number): boolean {
   return status === 404 || status === 500 || status === 502 || status === 503 || status === 504;
-}
-
-function isToolIntent(text: string): boolean {
-  const lowered = (text || "").trim().toLowerCase();
-  if (!lowered) return false;
-  const gmailPattern =
-    /\b(gmail|gmial|email|emails|emial|emials|inbox|unread|thread|draft|send email|send an email)\b/;
-  return (
-    gmailPattern.test(lowered) ||
-    /\b(calendar|event|meeting|schedule|appointment)\b/.test(lowered) ||
-    /\b(google drive|drive file|drive folder|docs|sheets|slides)\b/.test(lowered) ||
-    /\b(web search|search the web|look up online|find online)\b/.test(lowered)
-  );
-}
-
-function buildToolFallbackMessage(text: string): string {
-  const lowered = (text || "").trim().toLowerCase();
-  let toolLabel = "agent tools";
-  if (
-    /\b(gmail|gmial|email|emails|emial|emials|inbox|unread|thread|draft|send email|send an email)\b/.test(
-      lowered
-    )
-  ) {
-    toolLabel = "Gmail";
-  } else if (/\b(calendar|event|meeting|schedule|appointment)\b/.test(lowered)) {
-    toolLabel = "Google Calendar";
-  } else if (/\b(google drive|drive file|drive folder|docs|sheets|slides)\b/.test(lowered)) {
-    toolLabel = "Google Drive";
-  } else if (/\b(web search|search the web|look up online|find online)\b/.test(lowered)) {
-    toolLabel = "web search";
-  }
-  return `CortexAgent is unavailable right now, so I cannot run ${toolLabel}. I stopped here to avoid guessing. Please retry in a moment.`;
 }
 
 function buildAgentTraceHeader(payload: JsonRecord): string | null {
