@@ -647,7 +647,41 @@ export function useChat(): UseChatResult {
         setIsStreaming(false);
       }
     },
-    [createRemoteThread, isStreaming, persistRename, setMessagesForThread, threads, updateMessagesForThread]
+    [
+      createRemoteThread,
+      isStreaming,
+      persistRename,
+      setMessagesForThread,
+      threads,
+      updateMessagesForThread
+    ]
+  );
+
+  const resolveReactionEventId = useCallback(
+    async (targetThreadId: string, messageId: string, targetMessage: ChatMessage): Promise<string> => {
+      if (!messageId.startsWith("assistant-")) {
+        return messageId;
+      }
+      try {
+        const response = await fetch(`/api/chat/${targetThreadId}/messages`, { method: "GET" });
+        if (!response.ok) return messageId;
+        const payload = (await response.json().catch(() => null)) as
+          | { messages?: ChatMessage[] }
+          | null;
+        if (!payload || !Array.isArray(payload.messages)) return messageId;
+        const candidates = payload.messages.filter(
+          (message) => message.role === "assistant" && !message.id.startsWith("assistant-")
+        );
+        if (candidates.length === 0) return messageId;
+        const targetContent = targetMessage.content.trim();
+        const exact = candidates.find((message) => message.content.trim() === targetContent);
+        if (exact) return exact.id;
+        return candidates[candidates.length - 1]?.id ?? messageId;
+      } catch {
+        return messageId;
+      }
+    },
+    []
   );
 
   const reactToMessage = useCallback(
@@ -679,8 +713,13 @@ export function useChat(): UseChatResult {
       );
 
       try {
+        const reactionEventId = await resolveReactionEventId(
+          targetThreadId,
+          messageId,
+          targetMessage
+        );
         const response = await fetch(
-          `/api/chat/${targetThreadId}/messages/${messageId}/reaction`,
+          `/api/chat/${targetThreadId}/messages/${reactionEventId}/reaction`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -725,7 +764,7 @@ export function useChat(): UseChatResult {
         setError(err instanceof Error ? err.message : "Failed to save reaction.");
       }
     },
-    [updateMessagesForThread]
+    [resolveReactionEventId, updateMessagesForThread]
   );
 
   return useMemo(

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, MessageReaction } from "@/hooks/use-chat";
 import { MessageItem } from "@/components/chat/message-item";
-import { TypingIndicator } from "@/components/chat/typing-indicator";
+import { TypingIndicator, type DecisionChainStep } from "@/components/chat/typing-indicator";
 
 type MessageListProps = {
   messages: ChatMessage[];
@@ -19,7 +19,33 @@ type ActivityTone = "active" | "warning";
 type ActivityState = {
   label: string;
   tone: ActivityTone;
+  decisionSteps?: DecisionChainStep[];
 };
+
+function oneActiveStep(steps: string[], activeIndex: number): DecisionChainStep[] {
+  return steps.map((label, index) => ({
+    label,
+    status: index < activeIndex ? "completed" : index === activeIndex ? "active" : "pending"
+  }));
+}
+
+function inferActionFromUserText(text: string | null): string | null {
+  const normalized = (text ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (/\b(web|search|look up|google|news|latest|source|sources)\b/.test(normalized)) {
+    return "web_search";
+  }
+  if (/\b(drive|file|files|folder|folders|doc|docs|spreadsheet|sheet|slides)\b/.test(normalized)) {
+    return "google_drive";
+  }
+  if (/\b(calendar|schedule|availability|meeting|event|invite)\b/.test(normalized)) {
+    return "google_calendar";
+  }
+  if (/\b(gmail|email|emails|inbox|thread|send|draft|compose)\b/.test(normalized)) {
+    return "google_gmail";
+  }
+  return null;
+}
 
 type AgentTraceStep = {
   action: string;
@@ -69,7 +95,12 @@ function readAgentTraceSteps(message: ChatMessage | null): AgentTraceStep[] {
           ? executionStatusRaw
           : null;
       if (!action || !executionStatus) return null;
-      return { action, capabilityLabel, executionStatus } satisfies AgentTraceStep;
+      const next: AgentTraceStep = {
+        action,
+        executionStatus,
+        ...(capabilityLabel ? { capabilityLabel } : {})
+      };
+      return next;
     })
     .filter((item): item is AgentTraceStep => item !== null);
 }
@@ -175,7 +206,10 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
   const traceAction = readAgentTraceAction(activeAssistant);
   const traceReason = readAgentTraceReason(activeAssistant);
   const traceSteps = readAgentTraceSteps(activeAssistant);
-  const effectiveAction = traceAction;
+  const latestUserMessage =
+    [...messages].reverse().find((message) => message.role === "user")?.content ?? null;
+  const inferredAction = inferActionFromUserText(latestUserMessage);
+  const effectiveAction = traceAction ?? inferredAction;
   const elapsedMs =
     isStreaming && streamStartedAtRef.current
       ? Math.max(0, Date.now() + streamTick * 0 - streamStartedAtRef.current)
@@ -199,48 +233,62 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
     }
 
     const phase = elapsedMs < 1800 ? 0 : elapsedMs < 4200 ? 1 : 2;
+    const readableReason = humanizeDecisionReason(traceReason);
+    const routeDecisionStep: DecisionChainStep = {
+      label: readableReason ? `Decision: ${readableReason}` : "Decision: select best route",
+      status: traceReason || effectiveAction ? "completed" : "active"
+    };
     if (effectiveAction === "web_search") {
+      const steps = [
+        "Opening live web search...",
+        "Searching web sources and extracting key facts...",
+        "Preparing a grounded response..."
+      ];
+      const activeIndex = Math.min(phase, steps.length - 1);
       return {
-        label:
-          phase === 0
-            ? "Opening live web search..."
-            : phase === 1
-              ? "Checking top sources and extracting key facts..."
-              : "Preparing a grounded response...",
-        tone: "active"
+        label: steps[activeIndex],
+        tone: "active",
+        decisionSteps: [routeDecisionStep, ...oneActiveStep(steps, activeIndex)]
       };
     }
     if (effectiveAction === "google_gmail") {
+      const isComposeFlow =
+        (traceReason ?? "").toLowerCase().includes("send") ||
+        (traceReason ?? "").toLowerCase().includes("draft");
+      const steps = isComposeFlow
+        ? ["Opening Gmail...", "Composing draft email...", "Preparing your email response..."]
+        : ["Opening Gmail...", "Checking inbox and recent threads...", "Preparing your response..."];
+      const activeIndex = Math.min(phase, steps.length - 1);
       return {
-        label:
-          phase === 0
-            ? "Opening Gmail..."
-            : phase === 1
-              ? "Reading emails in your inbox..."
-              : "Preparing your response...",
-        tone: "active"
+        label: steps[activeIndex],
+        tone: "active",
+        decisionSteps: [routeDecisionStep, ...oneActiveStep(steps, activeIndex)]
       };
     }
     if (effectiveAction === "google_calendar") {
+      const steps = [
+        "Opening Google Calendar...",
+        "Checking availability and conflicts...",
+        "Preparing scheduling response..."
+      ];
+      const activeIndex = Math.min(phase, steps.length - 1);
       return {
-        label:
-          phase === 0
-            ? "Opening Google Calendar..."
-            : phase === 1
-              ? "Checking availability and conflicts..."
-              : "Preparing scheduling response...",
-        tone: "active"
+        label: steps[activeIndex],
+        tone: "active",
+        decisionSteps: [routeDecisionStep, ...oneActiveStep(steps, activeIndex)]
       };
     }
     if (effectiveAction === "google_drive") {
+      const steps = [
+        "Opening Google Drive...",
+        "Checking matching files and folders...",
+        "Preparing file response..."
+      ];
+      const activeIndex = Math.min(phase, steps.length - 1);
       return {
-        label:
-          phase === 0
-            ? "Opening Google Drive..."
-            : phase === 1
-              ? "Checking matching files and folders..."
-              : "Preparing file response...",
-        tone: "active"
+        label: steps[activeIndex],
+        tone: "active",
+        decisionSteps: [routeDecisionStep, ...oneActiveStep(steps, activeIndex)]
       };
     }
     if (effectiveAction === "orchestration") {
@@ -251,6 +299,27 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
       const activeStepLabel = activeStep
         ? activeStep.capabilityLabel || titleFromAction(activeStep.action)
         : "tool";
+      const chainSteps: DecisionChainStep[] =
+        traceSteps.length > 0
+          ? traceSteps.slice(0, 5).map((step) => {
+              const status: DecisionChainStep["status"] =
+                step.executionStatus === "completed"
+                  ? "completed"
+                  : step === activeStep
+                    ? "active"
+                    : "pending";
+              return {
+                label: step.capabilityLabel || titleFromAction(step.action),
+                status
+              };
+            })
+          : [
+              { label: "Plan tool sequence", status: phase >= 1 ? "completed" : "active" },
+              {
+                label: "Execute selected tools",
+                status: phase === 0 ? "pending" : phase === 1 ? "active" : "completed"
+              }
+            ];
       return {
         label:
           phase === 0
@@ -258,28 +327,54 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
             : phase === 1
               ? `Running ${activeStepLabel} and collecting results...`
               : "Synthesizing final response from step outputs...",
-        tone: "active"
+        tone: "active",
+        decisionSteps: [
+          routeDecisionStep,
+          ...chainSteps,
+          {
+            label: "Synthesize final response",
+            status: phase >= 2 ? "active" : "pending"
+          }
+        ]
       };
     }
     if (traceReason) {
-      const readableReason = humanizeDecisionReason(traceReason);
       return {
         label:
           hasAssistantContent
             ? "Preparing response..."
             : `Model decision: ${readableReason ?? traceReason}`,
-        tone: "active"
+        tone: "active",
+        decisionSteps: [
+          routeDecisionStep,
+          {
+            label: "Generate response",
+            status: hasAssistantContent ? "active" : "pending"
+          }
+        ]
       };
     }
     if (route?.mode === "agent") {
+      const genericSteps = ["Analyzing request...", "Preparing response..."];
+      const activeIndex = Math.min(phase, genericSteps.length - 1);
       return {
-        label: hasAssistantContent ? "Preparing response..." : "Waiting for model decision...",
-        tone: "active"
+        label: hasAssistantContent ? "Preparing response..." : genericSteps[activeIndex],
+        tone: "active",
+        decisionSteps: [
+          {
+            label: "Decision: choose route",
+            status: hasAssistantContent ? "completed" : "active"
+          },
+          ...oneActiveStep(genericSteps, activeIndex)
+        ]
       };
     }
+    const genericSteps = ["Analyze request", "Generate response"];
+    const activeIndex = Math.min(phase, genericSteps.length - 1);
     return {
-      label: hasAssistantContent ? "Preparing response..." : "Thinking through your request...",
-      tone: "active"
+      label: hasAssistantContent ? "Preparing response..." : genericSteps[activeIndex],
+      tone: "active",
+      decisionSteps: oneActiveStep(genericSteps, activeIndex)
     };
   };
   const activity = buildActivity();
@@ -302,6 +397,7 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
           <TypingIndicator
             activityLabel={activity?.label ?? null}
             tone={activity?.tone}
+            decisionSteps={activity?.decisionSteps ?? []}
           />
         ) : null}
         <div ref={bottomRef} />

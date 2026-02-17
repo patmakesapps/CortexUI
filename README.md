@@ -4,6 +4,13 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
 
 ## Release Notes (Feb 2026)
 
+- Improved streaming "thinking" UX while waiting for agent responses:
+  - shows one live step at a time (no step counters)
+  - rotates tool-specific progress copy for Gmail, Calendar, Drive, and Web Search
+  - avoids duplicate loader text when headline and active step match
+- Improved reaction reliability for streamed assistant messages:
+  - reaction calls now resolve temporary UI IDs to persisted event IDs before POSTing
+
 - Added production-oriented Supabase auth flow with:
   - Email/password sign-in
   - Create-account flow
