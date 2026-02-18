@@ -6,6 +6,7 @@ import type { ChatMessage, MessageReaction } from "@/hooks/use-chat";
 
 type MessageItemProps = {
   message: ChatMessage;
+  onQuickReply?: (text: string) => Promise<void>;
   onReact?: (threadId: string, messageId: string, reaction: MessageReaction) => Promise<void>;
 };
 
@@ -445,6 +446,56 @@ function parseCalendarDraftCard(content: string): ToolCardGroup | null {
   };
 }
 
+function parsePendingActionsSummary(
+  content: string
+): { items: Array<{ id: string; label: string; detail: string }>; prompt: string } | null {
+  const lines = content.split(/\r?\n/).map((line) => line.trim());
+  const headerIndex = lines.findIndex(
+    (line) => line.toLowerCase() === "pending actions waiting for confirmation:"
+  );
+  if (headerIndex < 0) return null;
+  const items: Array<{ id: string; label: string; detail: string }> = [];
+  let prompt = "";
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (!line) continue;
+    if (line.startsWith("- ")) {
+      const raw = line.slice(2).trim();
+      const parts = raw.split(":");
+      const pendingId = parts[0]?.trim() || "";
+      if (parts.length >= 2) {
+        const detail = parts.slice(1).join(":").trim();
+        const detailMatch = detail.match(/^(.+?)\s*\((.+)\)$/);
+        if (detailMatch) {
+          items.push({
+            id: pendingId,
+            label: detailMatch[1].trim(),
+            detail: detailMatch[2].trim()
+          });
+        } else {
+          items.push({
+            id: pendingId,
+            label: detail,
+            detail: "Pending"
+          });
+        }
+      } else {
+        items.push({
+          id: pendingId,
+          label: raw,
+          detail: "Pending"
+        });
+      }
+      continue;
+    }
+    if (/^reply with /i.test(line)) {
+      prompt = line;
+      break;
+    }
+  }
+  if (items.length === 0) return null;
+  return { items, prompt };
+}
+
 function parseToolCardGroup(action: string | undefined, content: string): ToolCardGroup | null {
   if (!action) return null;
   if (action === "google_gmail") {
@@ -707,6 +758,15 @@ function buildOrchestrationStepViews(
   });
 }
 
+function isCompletedCalendarWriteStep(step: OrchestrationStepView): boolean {
+  if (step.action !== "google_calendar" || step.status !== "completed") return false;
+  const query = (step.query || "").trim().toLowerCase();
+  if (!query) return false;
+  return /(^confirm:\s*add event\b)|(\badd event\b)|(\bcreate event\b)|(\bupdate calendar event\b)/i.test(
+    query
+  );
+}
+
 function isExpandableToolCardFieldValue(value: string): boolean {
   if (!value) return false;
   const lines = value.split(/\r?\n/).filter((line) => line.trim().length > 0);
@@ -900,12 +960,16 @@ function readAgentRouteMeta(message: ChatMessage): AgentRouteMeta | null {
   return null;
 }
 
-export function MessageItem({ message, onReact }: MessageItemProps) {
+export function MessageItem({ message, onQuickReply, onReact }: MessageItemProps) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [pendingReaction, setPendingReaction] = useState<MessageReaction | null>(null);
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [burstReaction, setBurstReaction] = useState<MessageReaction | null>(null);
   const [expandedToolCards, setExpandedToolCards] = useState<Record<string, boolean>>({});
+  const [pendingTitleDrafts, setPendingTitleDrafts] = useState<Record<string, string>>({});
+  const [pendingDayDrafts, setPendingDayDrafts] = useState<Record<string, string>>({});
+  const [pendingTimeDrafts, setPendingTimeDrafts] = useState<Record<string, string>>({});
+  const [savingPendingTitles, setSavingPendingTitles] = useState<Record<string, boolean>>({});
   const isUser = message.role === "user";
   const activeReaction =
     message.meta && typeof message.meta === "object"
@@ -949,6 +1013,10 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
     !isUser && agentTrace
       ? parseToolCardGroup(agentTrace.action, normalizedAssistantContent)
       : null;
+  const pendingActionsSummary =
+    !isUser && agentTrace?.action === "orchestration"
+      ? parsePendingActionsSummary(normalizedAssistantContent)
+      : null;
   const openCtaLabel = openLabelForAction(agentTrace?.action);
 
   const handleCopy = async (value: string, partIndex: number) => {
@@ -983,6 +1051,31 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
       ...prev,
       [cardKey]: !prev[cardKey]
     }));
+  };
+
+  const handlePendingTitleSave = async (
+    cardKey: string,
+    pendingId: string,
+    title: string,
+    day: string,
+    time: string
+  ) => {
+    if (!onQuickReply || !pendingId.trim()) return;
+    const titleValue = title.trim();
+    const dayValue = day.trim();
+    const timeValue = time.trim();
+    if (!titleValue && !dayValue && !timeValue) return;
+    const parts: string[] = [];
+    if (titleValue) parts.push(`title should be ${titleValue}`);
+    if (dayValue) parts.push(`on ${dayValue}`);
+    if (timeValue) parts.push(`at ${timeValue}`);
+    const editText = `pending_action_id=${pendingId} ${parts.join(" ")}`.trim();
+    try {
+      setSavingPendingTitles((prev) => ({ ...prev, [cardKey]: true }));
+      await onQuickReply(editText);
+    } finally {
+      setSavingPendingTitles((prev) => ({ ...prev, [cardKey]: false }));
+    }
   };
 
   const content = isUser ? (
@@ -1069,8 +1162,22 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
                   </div>
                   {step.query ? (
                     <div className="ui-panel ui-panel-strong rounded-xl px-3 py-2">
-                      <p className="ui-accent-soft text-[11px] font-semibold uppercase tracking-[0.12em]">
-                        Request
+                      <p
+                        className={
+                          step.status === "action_required"
+                            ? "text-[13px] font-semibold text-orange-600"
+                            : `text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                                isCompletedCalendarWriteStep(step)
+                                  ? "text-emerald-600"
+                                  : "ui-accent-soft"
+                              }`
+                        }
+                      >
+                        {step.status === "action_required"
+                          ? "Pending Request"
+                          : isCompletedCalendarWriteStep(step)
+                            ? "Request Completed"
+                            : "Request"}
                       </p>
                       <p className="mt-1 whitespace-pre-wrap text-[15px] leading-7">
                         {renderTextWithLinks(step.query)}
@@ -1123,6 +1230,98 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
               </article>
             ) : null}
           </div>
+        ) : pendingActionsSummary ? (
+          <article className="ui-panel rounded-2xl border border-orange-500/45 bg-orange-500/10 px-4 py-3 shadow-[0_12px_28px_rgb(120_53_15/0.18)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-orange-600">
+              Pending Actions
+            </p>
+            <div className="mt-2 space-y-2">
+              {pendingActionsSummary.items.map((item, index) => (
+                <div
+                  key={`${message.id}-pending-action-${index}`}
+                  className="ui-panel ui-panel-strong rounded-xl border border-orange-400/35 px-3 py-2"
+                >
+                  {(() => {
+                    const cardKey = `${message.id}-pending-action-${index}`;
+                    return (
+                      <>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-orange-600">
+                    Title
+                  </p>
+                  <input
+                    type="text"
+                    value={pendingTitleDrafts[cardKey] ?? item.label}
+                    onChange={(event) =>
+                      setPendingTitleDrafts((prev) => ({
+                        ...prev,
+                        [cardKey]: event.target.value
+                      }))
+                    }
+                    className="mt-1 w-full rounded-md border border-orange-400/35 bg-[rgb(var(--panel)/0.9)] px-2.5 py-2 text-[15px] leading-6 text-[rgb(var(--foreground)/0.98)] focus:border-orange-500/60 focus:outline-none"
+                  />
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-orange-600">
+                    Day
+                  </p>
+                  <input
+                    type="text"
+                    value={pendingDayDrafts[cardKey] ?? ""}
+                    onChange={(event) =>
+                      setPendingDayDrafts((prev) => ({
+                        ...prev,
+                        [cardKey]: event.target.value
+                      }))
+                    }
+                    placeholder="e.g. Sunday or Feb 23"
+                    className="mt-1 w-full rounded-md border border-orange-400/35 bg-[rgb(var(--panel)/0.9)] px-2.5 py-2 text-[15px] leading-6 text-[rgb(var(--foreground)/0.98)] placeholder:text-[rgb(var(--foreground)/0.5)] focus:border-orange-500/60 focus:outline-none"
+                  />
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-orange-600">
+                    Time
+                  </p>
+                  <input
+                    type="text"
+                    value={pendingTimeDrafts[cardKey] ?? ""}
+                    onChange={(event) =>
+                      setPendingTimeDrafts((prev) => ({
+                        ...prev,
+                        [cardKey]: event.target.value
+                      }))
+                    }
+                    placeholder="e.g. 9am or 10:30 AM"
+                    className="mt-1 w-full rounded-md border border-orange-400/35 bg-[rgb(var(--panel)/0.9)] px-2.5 py-2 text-[15px] leading-6 text-[rgb(var(--foreground)/0.98)] placeholder:text-[rgb(var(--foreground)/0.5)] focus:border-orange-500/60 focus:outline-none"
+                  />
+                  <p className="mt-1 text-[12px] uppercase tracking-[0.08em] text-orange-600">
+                    {item.detail}
+                  </p>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handlePendingTitleSave(
+                          cardKey,
+                          item.id,
+                          pendingTitleDrafts[cardKey] ?? item.label,
+                          pendingDayDrafts[cardKey] ?? "",
+                          pendingTimeDrafts[cardKey] ?? ""
+                        )
+                      }
+                      disabled={!onQuickReply || savingPendingTitles[cardKey]}
+                      className="ui-button rounded-md px-2.5 py-1 text-[12px] font-semibold"
+                    >
+                      {savingPendingTitles[cardKey] ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+            {pendingActionsSummary.prompt ? (
+              <p className="mt-2 text-[13px] leading-6 text-[rgb(var(--foreground)/0.86)]">
+                {pendingActionsSummary.prompt}
+              </p>
+            ) : null}
+          </article>
         ) : toolCardGroup ? (
           <div className="space-y-3">
             <p className="ui-accent-soft text-[15px] font-semibold uppercase tracking-wide">

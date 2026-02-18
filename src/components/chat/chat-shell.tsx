@@ -154,6 +154,7 @@ export function ChatShell() {
               <MessageList
                 messages={messages}
                 isStreaming={isStreaming}
+                onQuickReply={sendMessage}
                 onReactToMessage={reactToMessage}
               />
               {isThreadTransitioning ? (

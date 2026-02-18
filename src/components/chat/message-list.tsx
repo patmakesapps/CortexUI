@@ -8,6 +8,7 @@ import { TypingIndicator, type DecisionChainStep } from "@/components/chat/typin
 type MessageListProps = {
   messages: ChatMessage[];
   isStreaming: boolean;
+  onQuickReply: (text: string) => Promise<void>;
   onReactToMessage: (
     threadId: string,
     messageId: string,
@@ -160,7 +161,12 @@ function readAgentRoute(
   };
 }
 
-export function MessageList({ messages, isStreaming, onReactToMessage }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  onQuickReply,
+  onReactToMessage
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const streamStartedAtRef = useRef<number | null>(null);
   const prevSignatureRef = useRef<string>("");
@@ -386,6 +392,7 @@ export function MessageList({ messages, isStreaming, onReactToMessage }: Message
           <MessageItem
             key={message.id}
             message={message}
+            onQuickReply={onQuickReply}
             onReact={
               message.role === "assistant" && !isStreaming
                 ? onReactToMessage
