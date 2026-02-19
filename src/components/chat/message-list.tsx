@@ -30,24 +30,6 @@ function oneActiveStep(steps: string[], activeIndex: number): DecisionChainStep[
   }));
 }
 
-function inferActionFromUserText(text: string | null): string | null {
-  const normalized = (text ?? "").trim().toLowerCase();
-  if (!normalized) return null;
-  if (/\b(web|search|look up|google|news|latest|source|sources)\b/.test(normalized)) {
-    return "web_search";
-  }
-  if (/\b(drive|file|files|folder|folders|doc|docs|spreadsheet|sheet|slides)\b/.test(normalized)) {
-    return "google_drive";
-  }
-  if (/\b(calendar|schedule|availability|meeting|event|invite)\b/.test(normalized)) {
-    return "google_calendar";
-  }
-  if (/\b(gmail|email|emails|inbox|thread|send|draft|compose)\b/.test(normalized)) {
-    return "google_gmail";
-  }
-  return null;
-}
-
 type AgentTraceStep = {
   action: string;
   executionStatus: "completed" | "action_required" | "failed";
@@ -118,27 +100,61 @@ function titleFromAction(action: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function plannerStageSteps(
+  traceSteps: AgentTraceStep[],
+  phase: number,
+  isStreaming: boolean
+): DecisionChainStep[] {
+  const out: DecisionChainStep[] = [
+    { label: "Planner: interpret intent from full context", status: "completed" }
+  ];
+
+  if (traceSteps.length === 0) {
+    out.push({
+      label: "Executor: prepare tool execution",
+      status: isStreaming ? "active" : "pending"
+    });
+    out.push({
+      label: "Synthesize final response",
+      status: isStreaming ? "pending" : "active"
+    });
+    return out;
+  }
+
+  const allCompleted = traceSteps.every((step) => step.executionStatus === "completed");
+  const activeIndex = Math.min(
+    traceSteps.length - 1,
+    Math.max(0, Math.floor((phase / 3) * traceSteps.length))
+  );
+
+  for (let i = 0; i < traceSteps.length; i += 1) {
+    const step = traceSteps[i];
+    let status: DecisionChainStep["status"] = "pending";
+    if (step.executionStatus === "failed") {
+      status = i === activeIndex || !isStreaming ? "active" : "pending";
+    } else if (step.executionStatus === "action_required") {
+      status = i === activeIndex || !isStreaming ? "active" : "pending";
+    } else if (allCompleted && isStreaming) {
+      status = i < activeIndex ? "completed" : i === activeIndex ? "active" : "pending";
+    } else {
+      status = "completed";
+    }
+    out.push({
+      label: step.capabilityLabel || titleFromAction(step.action),
+      status
+    });
+  }
+
+  out.push({
+    label: "Synthesize final response",
+    status: isStreaming ? "active" : "completed"
+  });
+  return out;
+}
+
 function humanizeDecisionReason(reason: string | null): string | null {
   if (!reason) return null;
   const normalized = reason.trim().toLowerCase();
-  const exact: Record<string, string> = {
-    llm_only_tool_intent_hint_fallback:
-      "Detected tool intent and selected the best matching tool from intent hints.",
-    llm_only_tool_intent_unresolved:
-      "Detected tool intent, but the model could not map it to a safe executable tool action.",
-    llm_only_no_actionable_plan:
-      "Model did not return an actionable tool plan for this turn.",
-    web_search_followup: "Continuing the prior web search context.",
-    calendar_confirmation_followup: "Applying your follow-up to the pending calendar draft.",
-    gmail_send_confirmation_followup: "Applying your confirmation to the pending Gmail draft."
-  };
-  if (exact[normalized]) return exact[normalized];
-  if (normalized.startsWith("matched_")) {
-    return `Intent match: ${normalized.replace(/^matched_/, "").replace(/_/g, " ")}.`;
-  }
-  if (normalized.startsWith("verification_override:")) {
-    return "Verification policy required live web verification before answering.";
-  }
   return normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
@@ -212,13 +228,10 @@ export function MessageList({
   const traceAction = readAgentTraceAction(activeAssistant);
   const traceReason = readAgentTraceReason(activeAssistant);
   const traceSteps = readAgentTraceSteps(activeAssistant);
-  const latestUserMessage =
-    [...messages].reverse().find((message) => message.role === "user")?.content ?? null;
-  const inferredAction = inferActionFromUserText(latestUserMessage);
-  const effectiveAction = traceAction ?? inferredAction;
+  const effectiveAction = traceAction;
   const elapsedMs =
     isStreaming && streamStartedAtRef.current
-      ? Math.max(0, Date.now() + streamTick * 0 - streamStartedAtRef.current)
+      ? Math.max(0, Date.now() - streamStartedAtRef.current)
       : 0;
   const hasAssistantContent = Boolean(activeAssistant?.content?.trim());
 
@@ -305,27 +318,6 @@ export function MessageList({
       const activeStepLabel = activeStep
         ? activeStep.capabilityLabel || titleFromAction(activeStep.action)
         : "tool";
-      const chainSteps: DecisionChainStep[] =
-        traceSteps.length > 0
-          ? traceSteps.slice(0, 5).map((step) => {
-              const status: DecisionChainStep["status"] =
-                step.executionStatus === "completed"
-                  ? "completed"
-                  : step === activeStep
-                    ? "active"
-                    : "pending";
-              return {
-                label: step.capabilityLabel || titleFromAction(step.action),
-                status
-              };
-            })
-          : [
-              { label: "Plan tool sequence", status: phase >= 1 ? "completed" : "active" },
-              {
-                label: "Execute selected tools",
-                status: phase === 0 ? "pending" : phase === 1 ? "active" : "completed"
-              }
-            ];
       return {
         label:
           phase === 0
@@ -334,14 +326,20 @@ export function MessageList({
               ? `Running ${activeStepLabel} and collecting results...`
               : "Synthesizing final response from step outputs...",
         tone: "active",
-        decisionSteps: [
-          routeDecisionStep,
-          ...chainSteps,
-          {
-            label: "Synthesize final response",
-            status: phase >= 2 ? "active" : "pending"
-          }
-        ]
+        decisionSteps: [routeDecisionStep, ...plannerStageSteps(traceSteps.slice(0, 6), phase, isStreaming)]
+      };
+    }
+    if (effectiveAction && traceSteps.length > 0) {
+      const readableAction = titleFromAction(effectiveAction);
+      return {
+        label:
+          phase === 0
+            ? "Planner analyzing conversation context..."
+            : phase === 1
+              ? `Executor running ${readableAction}...`
+              : "Synthesizing final response...",
+        tone: "active",
+        decisionSteps: [routeDecisionStep, ...plannerStageSteps(traceSteps.slice(0, 6), phase, isStreaming)]
       };
     }
     if (traceReason) {

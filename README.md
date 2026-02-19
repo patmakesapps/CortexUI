@@ -4,6 +4,13 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
 
 ## Release Notes (Feb 2026)
 
+- Aligned chat "thinking" telemetry to the refactored LLM-first CortexAgent runtime:
+  - removed keyword/regex action inference from the thinking bubble
+  - decision/status UI now follows planner/executor trace metadata
+  - added explicit `Current step:` display from live agent trace
+- Updated agent fallback diagnostics during stream routing:
+  - clearer agent-fallback warning text when CortexAgent returns upstream errors
+
 - Improved streaming "thinking" UX while waiting for agent responses:
   - shows one live step at a time (no step counters)
   - rotates tool-specific progress copy for Gmail, Calendar, Drive, and Web Search

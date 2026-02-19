@@ -49,7 +49,7 @@ export function TypingIndicator({
                   return (
                     <div className="flex items-center gap-2">
                       <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 animate-pulse" />
-                      <span>{stepLine}</span>
+                      <span>Current step: {stepLine}</span>
                     </div>
                   );
                 })()}

@@ -630,23 +630,6 @@ function toTitleCase(raw: string): string {
 
 function humanizeDecisionReason(reason: string): string {
   const normalized = (reason || "").trim().toLowerCase();
-  const exact: Record<string, string> = {
-    llm_only_tool_intent_hint_fallback:
-      "Detected tool intent and selected the best matching tool action.",
-    llm_only_tool_intent_unresolved:
-      "Detected tool intent, but no safe executable tool action was found.",
-    llm_only_no_actionable_plan: "Model did not return an actionable tool plan.",
-    web_search_followup: "Continuing the prior web search context.",
-    calendar_confirmation_followup: "Applying your follow-up to the pending calendar draft.",
-    gmail_send_confirmation_followup: "Applying your confirmation to the pending Gmail draft."
-  };
-  if (exact[normalized]) return exact[normalized];
-  if (normalized.startsWith("matched_")) {
-    return `Intent match: ${normalized.replace(/^matched_/, "").replace(/_/g, " ")}.`;
-  }
-  if (normalized.startsWith("verification_override:")) {
-    return "Verification policy required live web verification before answering.";
-  }
   return normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
