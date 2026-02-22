@@ -183,8 +183,8 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
   const activeReaction = localReaction ?? readActiveReaction(message.meta);
 
   const bubbleClass = isUser
-    ? "ml-auto ui-message-user rounded-2xl px-4 py-3"
-    : "mr-auto ui-message-assistant rounded-2xl px-4 py-3";
+    ? "ml-auto ui-user-bubble rounded-2xl px-4 py-3"
+    : "mr-auto px-1 py-1";
 
   const handleCopy = async (value: string, index: number) => {
     try {
@@ -198,6 +198,7 @@ export function MessageItem({ message, onReact }: MessageItemProps) {
 
   const handleReactionClick = async (reaction: MessageReaction) => {
     if (!onReact || !message.threadId || !message.id || pendingReaction) return;
+    setReactionsOpen(false);
     setPendingReaction(reaction);
     setBurstReaction(reaction);
     window.setTimeout(() => setBurstReaction(null), 220);
