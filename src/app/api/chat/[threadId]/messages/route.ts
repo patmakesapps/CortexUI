@@ -7,11 +7,6 @@ import { MemoryApiError } from "@/lib/memory/cortex-http-provider";
 export const runtime = "nodejs";
 
 const MAX_MESSAGE_LENGTH = 6000;
-const FORWARDED_UPSTREAM_HEADERS = [
-  "x-cortex-agent-trace",
-  "x-cortex-route-mode",
-  "x-cortex-route-warning"
-];
 
 type MessagePayload = {
   text?: string;
@@ -126,15 +121,11 @@ export async function POST(
       return jsonError("Selected memory backend does not implement chat().", 500);
     }
     const upstream = await memory.chat(threadId, text, req.signal);
-    const headers = new Headers({
-      "Content-Type":
-        upstream.headers.get("Content-Type") ?? "text/plain; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform"
-    });
-    for (const name of FORWARDED_UPSTREAM_HEADERS) {
-      const value = upstream.headers.get(name);
-      if (value) headers.set(name, value);
+    const headers = new Headers(upstream.headers);
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "text/plain; charset=utf-8");
     }
+    headers.set("Cache-Control", "no-cache, no-transform");
     return new Response(upstream.body, {
       status: upstream.status,
       headers

@@ -5,7 +5,7 @@
 - Add per-route auth telemetry (unauthorized vs forbidden vs upstream auth failure).
 
 2. Tests
-- Unit test cue detection and context assembly in `cortex-provider`.
+- Unit test cue detection and context assembly in `cortex-http-provider`.
 - Integration test message ordering contract and assistant persistence on stream completion.
 - Component tests for `use-chat` streaming state transitions.
 - Component tests for malformed markdown/code-fence rendering in `message-item`.

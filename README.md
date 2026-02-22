@@ -4,13 +4,6 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
 
 ## Release Notes (Feb 2026)
 
-- Aligned chat "thinking" telemetry to the refactored LLM-first CortexAgent runtime:
-  - removed keyword/regex action inference from the thinking bubble
-  - decision/status UI now follows planner/executor trace metadata
-  - added explicit `Current step:` display from live agent trace
-- Updated agent fallback diagnostics during stream routing:
-  - clearer agent-fallback warning text when CortexAgent returns upstream errors
-
 - Improved streaming "thinking" UX while waiting for agent responses:
   - shows one live step at a time (no step counters)
   - rotates tool-specific progress copy for Gmail, Calendar, Drive, and Web Search
@@ -34,13 +27,6 @@ Production-oriented, modular chat interface for CortexLTM memory workflows.
   - supports fenced blocks that start after list prefixes
   - tolerates trailing text on closing fences
   - preserves code rendering when a model omits a closing fence
-- Updated Google Calendar integration UX:
-  - connection now requests `calendar.events` scope for read + write
-  - app copy now reflects read/create support, not read-only support
-- Added Google Drive integration UX:
-  - Google app connection now requests Drive metadata read scope
-  - Apps page shows Drive readiness alongside Calendar and Gmail
-  - chat tool cards include Drive results with app-specific CTA labels
 - Improved chat thread switching UX:
   - added transition/loading states when changing threads
   - composer disables during transition to prevent cross-thread sends
@@ -74,10 +60,6 @@ This project is in early development. APIs, UI behavior, and module boundaries m
    - `CORTEX_MEMORY_BACKEND=cortex_http`
    - `CORTEX_API_BASE_URL` (for example: `http://127.0.0.1:8000`)
    - Optional `CORTEX_API_KEY` (must match `CORTEXLTM_API_KEY` when backend auth is enabled)
-   - `CORTEX_AGENT_ENABLED=true` (recommended for agentic routing + web search)
-   - `CORTEX_AGENT_BASE_URL` (for example: `http://127.0.0.1:8010`)
-   - `GOOGLE_CLIENT_ID` (required for Google connected-app OAuth start flow)
-   - Optional `GOOGLE_REDIRECT_URI` (must match Google OAuth client redirect URI; defaults to `/api/integrations/google/callback` on current origin)
    - `AUTH_MODE=dev` (or `supabase` when backend enforces bearer tokens)
    - `APP_ORIGIN` (for example: `http://localhost:3000`, used for OAuth callback URLs)
    - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` when using Supabase auth
@@ -103,13 +85,10 @@ uvicorn cortexltm.api:app --host 0.0.0.0 --port 8000
 - `POST /api/auth/sign-up` email/password account creation
 - `POST /api/auth/oauth/start` start OAuth login (Google/GitHub)
 - `POST /api/auth/sign-out` clear local auth cookies
-- `POST /api/integrations/google/start` generate Google OAuth URL + PKCE/state cookies
-  - Requests `openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose`
-- `GET /api/integrations/google/callback` OAuth callback relay to CortexAgent connect endpoint
 - `GET /api/chat/threads` list threads for resolved user
 - `POST /api/chat/threads` create thread
 - `GET /api/chat/[threadId]/messages` fetch recent messages
-- `POST /api/chat/[threadId]/messages` proxy chat orchestration to CortexLTM (`/v1/threads/{threadId}/chat`) or CortexAgent (`/v1/agent/threads/{threadId}/chat`) when enabled
+- `POST /api/chat/[threadId]/messages` proxy chat requests to CortexLTM (`/v1/threads/{threadId}/chat`)
 - `POST /api/chat/[threadId]/messages/[messageId]/reaction` save/clear a reaction on assistant messages (`thumbs_up`, `heart`, `angry`, `sad`, `brain`)
 - `PATCH /api/chat/[threadId]` rename thread
 - `DELETE /api/chat/[threadId]` delete thread

@@ -33,143 +33,11 @@ type UseChatResult = {
   ) => Promise<void>;
 };
 
-type AgentCapability = {
-  id: string;
-  type: "tool";
-  label: string;
-};
-
-type AgentRouteMode = "agent" | "agent_fallback" | "memory_direct";
-
-type AgentRouteMeta = {
-  mode: AgentRouteMode;
-  warning?: string;
-};
-
-type AgentTraceMeta = {
-  version: number;
-  source: string;
-  action: string;
-  reason?: string;
-  confidence?: number;
-  capabilities: AgentCapability[];
-  steps?: Array<{
-    action: string;
-    toolName: string;
-    success: boolean;
-    reason: string;
-    executionStatus: "completed" | "action_required" | "failed";
-    query?: string;
-    capabilityLabel?: string;
-  }>;
-};
-
 function deriveTitle(text: string): string {
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (!cleaned) return "New chat";
   const words = cleaned.split(" ").slice(0, 7).join(" ");
   return words.length > 60 ? `${words.slice(0, 57)}...` : words;
-}
-
-function parseAgentTraceMeta(headers: Headers): AgentTraceMeta | null {
-  const raw = headers.get("x-cortex-agent-trace");
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const action = typeof parsed.action === "string" ? parsed.action.trim() : "";
-    if (!action) return null;
-    const version = typeof parsed.version === "number" ? parsed.version : 1;
-    const source = typeof parsed.source === "string" ? parsed.source : "cortex-agent";
-    const reason = typeof parsed.reason === "string" ? parsed.reason : undefined;
-    const confidence =
-      typeof parsed.confidence === "number" ? parsed.confidence : undefined;
-    const capabilitiesRaw = Array.isArray(parsed.capabilities)
-      ? parsed.capabilities
-      : [];
-    const stepsRaw = Array.isArray(parsed.steps) ? parsed.steps : [];
-    const capabilities = capabilitiesRaw
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const row = item as Record<string, unknown>;
-        const id = typeof row.id === "string" ? row.id.trim() : "";
-        const type = row.type === "tool" ? "tool" : null;
-        const label = typeof row.label === "string" ? row.label.trim() : "";
-        if (!id || !type || !label) return null;
-        return { id, type, label } satisfies AgentCapability;
-      })
-      .filter((item): item is AgentCapability => item !== null);
-    const steps = stepsRaw
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const row = item as Record<string, unknown>;
-        const action = typeof row.action === "string" ? row.action.trim() : "";
-        const toolName = typeof row.toolName === "string" ? row.toolName.trim() : "";
-        const success = typeof row.success === "boolean" ? row.success : null;
-        const reason = typeof row.reason === "string" ? row.reason.trim() : "";
-        const query = typeof row.query === "string" ? row.query.trim() : "";
-        const capabilityLabel =
-          typeof row.capabilityLabel === "string" ? row.capabilityLabel.trim() : "";
-        const executionStatusRaw =
-          typeof row.executionStatus === "string" ? row.executionStatus.trim().toLowerCase() : "";
-        const executionStatus =
-          executionStatusRaw === "completed" ||
-          executionStatusRaw === "action_required" ||
-          executionStatusRaw === "failed"
-            ? executionStatusRaw
-            : success
-              ? "completed"
-              : "failed";
-        if (!action || !toolName || success === null) return null;
-        return {
-          action,
-          toolName,
-          success,
-          reason,
-          executionStatus,
-          ...(query ? { query } : {}),
-          ...(capabilityLabel ? { capabilityLabel } : {})
-        };
-      })
-      .filter(
-        (item): item is {
-          action: string;
-          toolName: string;
-          success: boolean;
-          reason: string;
-          executionStatus: "completed" | "action_required" | "failed";
-          query?: string;
-          capabilityLabel?: string;
-        } =>
-          item !== null
-      );
-
-    return {
-      version,
-      source,
-      action,
-      ...(reason ? { reason } : {}),
-      ...(typeof confidence === "number" ? { confidence } : {}),
-      capabilities,
-      ...(steps.length > 0 ? { steps } : {})
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseAgentRouteMeta(headers: Headers): AgentRouteMeta | null {
-  const rawMode = headers.get("x-cortex-route-mode");
-  if (!rawMode) return null;
-  const mode = rawMode.trim().toLowerCase();
-  if (mode !== "agent" && mode !== "agent_fallback" && mode !== "memory_direct") {
-    return null;
-  }
-  const warningRaw = headers.get("x-cortex-route-warning");
-  const warning = warningRaw?.trim();
-  return {
-    mode: mode as AgentRouteMode,
-    ...(warning ? { warning } : {})
-  };
 }
 
 export function useChat(): UseChatResult {
@@ -554,25 +422,6 @@ export function useChat(): UseChatResult {
             | null;
           throw new Error(payload?.error?.message ?? "Assistant request failed.");
         }
-        const traceMeta = parseAgentTraceMeta(response.headers);
-        const routeMeta = parseAgentRouteMeta(response.headers);
-        if (traceMeta || routeMeta) {
-          updateMessagesForThread(requestThreadId, (existing) =>
-            existing.map((message) =>
-              message.id === assistantId
-                ? {
-                    ...message,
-                    meta: {
-                      ...(message.meta ?? {}),
-                      ...(traceMeta ? { agentTrace: traceMeta } : {}),
-                      ...(routeMeta ? { agentRoute: routeMeta } : {})
-                    }
-                  }
-                : message
-            )
-          );
-        }
-
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let pendingChunk = "";

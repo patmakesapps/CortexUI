@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChatShell } from "@/components/chat/chat-shell";
-import { AppsShell } from "@/components/apps/apps-shell";
 import { AuthPanel } from "@/components/auth/auth-panel";
 import { BrainLoader } from "@/components/ui/brain-loader";
 import { ThemeSelect } from "@/components/ui/theme-select";
@@ -16,10 +15,9 @@ type SessionState = {
 
 type Props = {
   requireAuth: boolean;
-  view?: "chat" | "apps";
 };
 
-export function AuthGate({ requireAuth, view = "chat" }: Props) {
+export function AuthGate({ requireAuth }: Props) {
   const [session, setSession] = useState<SessionState>({
     loading: requireAuth,
     authenticated: !requireAuth,
@@ -129,7 +127,7 @@ export function AuthGate({ requireAuth, view = "chat" }: Props) {
         </div>
       </div>
       <div className="h-full pt-[78px]">
-        {view === "apps" ? <AppsShell /> : <ChatShell />}
+        <ChatShell />
       </div>
     </div>
   );

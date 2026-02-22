@@ -20,116 +20,38 @@ export class MemoryApiError extends Error {
 
 export class CortexHttpProvider implements MemoryProvider {
   private readonly baseUrl: string;
-  private readonly agentBaseUrl: string | null;
   private readonly apiKey: string | null;
   private readonly authorization: string | null;
 
   constructor(options?: { authorization?: string | null }) {
     const configured = process.env.CORTEX_API_BASE_URL ?? "http://127.0.0.1:8000";
     this.baseUrl = normalizeBaseUrl(configured, "http://127.0.0.1:8000");
-    const agentEnabled = (process.env.CORTEX_AGENT_ENABLED ?? "true")
-      .trim()
-      .toLowerCase() === "true";
-    const configuredAgent = process.env.CORTEX_AGENT_BASE_URL ?? "http://127.0.0.1:8010";
-    this.agentBaseUrl = agentEnabled
-      ? normalizeBaseUrl(configuredAgent, "http://127.0.0.1:8010")
-      : null;
     this.apiKey = process.env.CORTEX_API_KEY ?? null;
     this.authorization = options?.authorization ?? null;
   }
 
   async startThread(userId: string, title?: string): Promise<string> {
-    const payload = await this.requestJson<{ thread_id: string }>(
-      "/v1/threads",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: userId,
-          ...(title ? { title } : {})
-        })
-      }
-    );
+    const payload = await this.requestJson<{ thread_id: string }>("/v1/threads", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: userId,
+        ...(title ? { title } : {})
+      })
+    });
     if (!payload.thread_id) throw new Error("Missing thread_id from memory API.");
     return payload.thread_id;
   }
 
-  async chat(
-    threadId: string,
-    text: string,
-    signal?: AbortSignal
-  ): Promise<Response> {
-    const headers = this.createHeaders();
-    const useAgent = Boolean(this.agentBaseUrl);
-    const primaryUrl = useAgent
-      ? `${this.agentBaseUrl}/v1/agent/threads/${encodeURIComponent(threadId)}/chat`
-      : `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`;
-    const fallbackUrl = `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`;
-    let response: Response;
-    let routeMode: "agent" | "agent_fallback" | "memory_direct" = useAgent
-      ? "agent"
-      : "memory_direct";
-    let routeWarning: string | null = null;
-
-    try {
-      response = await fetch(primaryUrl, {
+  async chat(threadId: string, text: string, signal?: AbortSignal): Promise<Response> {
+    const response = await fetch(
+      `${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/chat`,
+      {
         method: "POST",
-        headers,
+        headers: this.createHeaders(),
         body: JSON.stringify({ text }),
         signal
-      });
-    } catch (error) {
-      if (!useAgent) {
-        throw new MemoryApiError(
-          `Memory API chat request failed for ${primaryUrl}: ${
-            error instanceof Error ? error.message : "fetch failed"
-          }`,
-          503
-        );
       }
-      try {
-        response = await fetch(fallbackUrl, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ text }),
-          signal
-        });
-        routeMode = "agent_fallback";
-        routeWarning = `CortexAgent was unreachable at ${primaryUrl}; used CortexLTM direct route instead.`;
-      } catch (fallbackError) {
-        throw new MemoryApiError(
-          `Chat routing failed for agent ${primaryUrl} and fallback ${fallbackUrl}: ${
-            fallbackError instanceof Error ? fallbackError.message : "fetch failed"
-          }`,
-          503
-        );
-      }
-    }
-
-    if (
-      useAgent &&
-      response &&
-      !response.ok &&
-      shouldFallbackToBaseFromAgent(response.status)
-    ) {
-      const agentStatus = response.status;
-      try {
-        response = await fetch(fallbackUrl, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ text }),
-          signal
-        });
-        routeMode = "agent_fallback";
-        routeWarning = `CortexAgent returned ${agentStatus}; used CortexLTM direct route instead.`;
-      } catch (error) {
-        throw new MemoryApiError(
-          `Agent chat failed with status ${agentStatus} and fallback ${fallbackUrl} was unreachable: ${
-            error instanceof Error ? error.message : "fetch failed"
-          }`,
-          503
-        );
-      }
-    }
+    );
 
     if (!response.ok) {
       const textBody = await response.text();
@@ -143,40 +65,13 @@ export class CortexHttpProvider implements MemoryProvider {
       }
       const message =
         readErrorMessage(payload) ??
-        (textBody ||
-          `Memory API chat request failed with status ${response.status}.`);
+        (textBody || `Memory API chat request failed with status ${response.status}.`);
       throw new MemoryApiError(message, response.status);
     }
 
-    if (useAgent && isJsonResponse(response)) {
-      const payload = (await response.json().catch(() => ({}))) as JsonRecord;
-      const assistantText =
-        typeof payload.response === "string" ? payload.response : "";
-      const traceHeader = buildAgentTraceHeader(payload);
-      const outHeaders = new Headers({
-        "Content-Type": "text/plain; charset=utf-8"
-      });
-      outHeaders.set("x-cortex-route-mode", routeMode);
-      if (routeWarning) {
-        outHeaders.set("x-cortex-route-warning", sanitizeHeaderValue(routeWarning));
-      }
-      if (traceHeader) {
-        outHeaders.set("x-cortex-agent-trace", traceHeader);
-      }
-      return new Response(assistantText, {
-        status: 200,
-        headers: outHeaders
-      });
-    }
-
-    const passthroughHeaders = new Headers(response.headers);
-    passthroughHeaders.set("x-cortex-route-mode", routeMode);
-    if (routeWarning) {
-      passthroughHeaders.set("x-cortex-route-warning", sanitizeHeaderValue(routeWarning));
-    }
     return new Response(response.body, {
       status: response.status,
-      headers: passthroughHeaders
+      headers: new Headers(response.headers)
     });
   }
 
@@ -199,13 +94,10 @@ export class CortexHttpProvider implements MemoryProvider {
   }
 
   async renameThread(threadId: string, title: string): Promise<void> {
-    await this.requestJson(
-      `/v1/threads/${encodeURIComponent(threadId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ title })
-      }
-    );
+    await this.requestJson(`/v1/threads/${encodeURIComponent(threadId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title })
+    });
   }
 
   async deleteThread(threadId: string): Promise<void> {
@@ -269,9 +161,7 @@ export class CortexHttpProvider implements MemoryProvider {
     };
   }
 
-  async buildMemoryContext(
-    params: BuildMemoryContextParams
-  ): Promise<ContextMessage[]> {
+  async buildMemoryContext(params: BuildMemoryContextParams): Promise<ContextMessage[]> {
     const payload = await this.requestJson<{ messages?: JsonRecord[] }>(
       `/v1/threads/${encodeURIComponent(params.threadId)}/memory-context`,
       {
@@ -289,9 +179,7 @@ export class CortexHttpProvider implements MemoryProvider {
         content: message.content
       }))
       .filter(
-        (
-          message
-        ): message is ContextMessage =>
+        (message): message is ContextMessage =>
           (message.role === "system" ||
             message.role === "user" ||
             message.role === "assistant") &&
@@ -318,9 +206,7 @@ export class CortexHttpProvider implements MemoryProvider {
         threadId: String(row.thread_id ?? threadId),
         role,
         content,
-        createdAt: new Date(
-          String(row.created_at ?? new Date().toISOString())
-        ).toISOString(),
+        createdAt: new Date(String(row.created_at ?? new Date().toISOString())).toISOString(),
         ...(isRecord(row.meta) ? { meta: row.meta } : {})
       });
     }
@@ -381,8 +267,7 @@ export class CortexHttpProvider implements MemoryProvider {
 
     if (!response.ok) {
       const message =
-        readErrorMessage(payload) ??
-        `Memory API request failed with status ${response.status}.`;
+        readErrorMessage(payload) ?? `Memory API request failed with status ${response.status}.`;
       throw new MemoryApiError(message, response.status);
     }
 
@@ -418,137 +303,6 @@ function readErrorMessage(payload: JsonRecord | null): string | null {
   return null;
 }
 
-function isJsonResponse(response: Response): boolean {
-  const value = response.headers.get("Content-Type") ?? "";
-  return value.toLowerCase().includes("application/json");
-}
-
-function shouldFallbackToBaseFromAgent(status: number): boolean {
-  return status === 404 || status === 500 || status === 502 || status === 503 || status === 504;
-}
-
-function buildAgentTraceHeader(payload: JsonRecord): string | null {
-  const decision = isRecord(payload.decision) ? payload.decision : null;
-  const action = typeof decision?.action === "string" ? decision.action.trim() : "";
-  if (!action) return null;
-  const reason = typeof decision?.reason === "string" ? decision.reason.trim() : "";
-  const confidenceRaw = decision?.confidence;
-  const confidence =
-    typeof confidenceRaw === "number" && Number.isFinite(confidenceRaw)
-      ? confidenceRaw
-      : null;
-  const capabilities = inferCapabilitiesFromPayload(payload, action);
-  const steps = inferPipelineStepsFromPayload(payload);
-  const trace = {
-    version: 1,
-    source: "cortex-agent",
-    action,
-    ...(reason ? { reason } : {}),
-    ...(confidence !== null ? { confidence } : {}),
-    capabilities,
-    ...(steps.length > 0 ? { steps } : {})
-  };
-  return JSON.stringify(trace);
-}
-
-function inferPipelineStepsFromPayload(
-  payload: JsonRecord
-): Array<{
-  action: string;
-  toolName: string;
-  success: boolean;
-  reason: string;
-  executionStatus: "completed" | "action_required" | "failed";
-  query: string;
-  capabilityLabel: string;
-}> {
-  const raw = payload.tool_pipeline;
-  if (!Array.isArray(raw)) return [];
-  const out: Array<{
-    action: string;
-    toolName: string;
-    success: boolean;
-    reason: string;
-    executionStatus: "completed" | "action_required" | "failed";
-    query: string;
-    capabilityLabel: string;
-  }> = [];
-  for (const item of raw) {
-    if (!isRecord(item)) continue;
-    const action = typeof item.action === "string" ? item.action.trim() : "";
-    const toolName = typeof item.tool_name === "string" ? item.tool_name.trim() : "";
-    const success = typeof item.success === "boolean" ? item.success : null;
-    const reason = typeof item.reason === "string" ? item.reason.trim() : "";
-    const query = typeof item.query === "string" ? item.query.trim() : "";
-    const capabilityLabel =
-      typeof item.capability_label === "string" && item.capability_label.trim().length > 0
-        ? item.capability_label.trim()
-        : action
-          .replace(/_/g, " ")
-          .replace(/\b\w/g, (char) => char.toUpperCase());
-    const executionStatusRaw =
-      typeof item.execution_status === "string" ? item.execution_status.trim().toLowerCase() : "";
-    const executionStatus =
-      executionStatusRaw === "completed" ||
-      executionStatusRaw === "action_required" ||
-      executionStatusRaw === "failed"
-        ? executionStatusRaw
-        : success
-          ? "completed"
-          : "failed";
-    if (!action || !toolName || success === null) continue;
-    out.push({ action, toolName, success, reason, executionStatus, query, capabilityLabel });
-  }
-  return out;
-}
-
-function inferCapabilitiesFromPayload(
-  payload: JsonRecord,
-  action: string
-): Array<{ id: string; type: "tool"; label: string }> {
-  const out: Array<{ id: string; type: "tool"; label: string }> = [];
-  if (action === "web_search") {
-    out.push({ id: "web_search", type: "tool", label: "Web Search" });
-  } else if (action === "google_calendar") {
-    out.push({ id: "google_calendar", type: "tool", label: "Google Calendar" });
-  } else if (action === "google_gmail") {
-    out.push({ id: "google_gmail", type: "tool", label: "Gmail" });
-  } else if (action === "google_drive") {
-    out.push({ id: "google_drive", type: "tool", label: "Google Drive" });
-  } else if (action === "orchestration") {
-    const pipeline = payload.tool_pipeline;
-    if (Array.isArray(pipeline)) {
-      const seen = new Set<string>();
-      for (const step of pipeline) {
-        if (!isRecord(step)) continue;
-        const stepAction =
-          typeof step.action === "string" ? step.action.trim().toLowerCase() : "";
-        if (!stepAction || seen.has(stepAction)) continue;
-        seen.add(stepAction);
-        out.push({
-          id: stepAction,
-          type: "tool",
-          label:
-            stepAction === "google_calendar"
-              ? "Google Calendar"
-              : stepAction === "google_gmail"
-                ? "Gmail"
-                : stepAction === "google_drive"
-                  ? "Google Drive"
-                  : stepAction === "web_search"
-                    ? "Web Search"
-                    : stepAction.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
-        });
-      }
-    }
-  }
-  const sources = payload.sources;
-  if (Array.isArray(sources) && sources.length > 0 && out.length === 0) {
-    out.push({ id: "external_sources", type: "tool", label: "External Sources" });
-  }
-  return out;
-}
-
 function normalizeBaseUrl(raw: string, fallback: string): string {
   const cleaned = raw.trim().replace(/^['"]|['"]$/g, "");
   try {
@@ -560,8 +314,4 @@ function normalizeBaseUrl(raw: string, fallback: string): string {
   } catch {
     return fallback;
   }
-}
-
-function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").trim().slice(0, 240);
 }
